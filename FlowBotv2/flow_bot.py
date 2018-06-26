@@ -14,6 +14,8 @@ from rlbot.agents.base_agent import BaseAgent
 # load/save behavior
 TRAIN = True
 SAVE_NET = True
+WRITE_DATA = True
+SAVE_DATA = True
 LOAD_NET = False
 NET_PATH = "../Networks/saved/"
 LOAD_NET_NAME = "FlowBot1522424200"
@@ -31,7 +33,7 @@ BOT_TYPE = "all"
 N_INPUT = 29							# todo automate from INPUT_COMPOSITION
 N_OUTPUT = len(gi.get_action_states(BOT_TYPE))
 START_EPSILON = 0.9						# chance that a random action will be chosen instead of the one with highest q_value
-EPSILON_DECAY = 1e-2					# amount the epsilon value decreases every episode
+EPSILON_DECAY = 2e-3					# amount the epsilon value decreases every episode
 MIN_EPSILON = 0.1						# minimum epsilon value
 
 # how strongly the individual components of fitness contribute to the whole
@@ -64,7 +66,7 @@ class FlowBot(BaseAgent):
 		self.prev_info_time = time()				# used to keep track of time since last info
 		self.action_states = gi.get_action_states(BOT_TYPE)		# all actions the agent can choose from
 
-		self.episode_end_condition = EpisodeEndCondition(fixed_length=1e+5, goal=True, game_end=False)
+		self.episode_end_condition = EpisodeEndCondition(fixed_length=5e+3, goal=True, game_end=False)
 		self.epsilon = START_EPSILON
 		self.aps = 0						# actions per second
 
@@ -142,7 +144,7 @@ class FlowBot(BaseAgent):
 
 		# at the end of every episode the data in the replay memory is updated and the net is trained with the new data
 		if self.episode_end_condition.is_met(game_info) and TRAIN:
-			mem_update_time, training_time = self.update_net()
+			mem_update_time, training_time = self.next_episode()
 			self.run_info.episode(mem_update_time, training_time, verbose=EPISODE_INFO)
 
 		# info for debugging purposes
@@ -153,9 +155,10 @@ class FlowBot(BaseAgent):
 			# print("Game state:", game_info)
 			print("Epsilon:", self.epsilon)
 			print("Memory size:", self.replay_memory.size)
-			print("Net input: ", state)
+			print("Net input:", state)
+			print("Net Output:", q_values)
 			print("Action:", selected_action)
-			print("Return Vector:", return_controller_state)
+			# print("Return Vector:", return_controller_state)
 			# print("------------------------------------------------------")
 			print()
 
@@ -178,20 +181,32 @@ class FlowBot(BaseAgent):
 		# reward = self.state_score(cur_game_info) - self.state_score(self.prev_game_info)
 		return reward
 
-	def update_net(self):
+	def next_episode(self):
 		"""
 		updates the q_values in the replay memory and trains the net
 		:return: the time it took to 1: update the qvs and 2: train the net
 		"""
-		mem_up = self.replay_memory.update_q_values()
-		self.epsilon -= EPSILON_DECAY
+		# update the q_values in the replay memory
+		mem_up_time = self.replay_memory.update_q_values()
+
+		# decrease epsilon
+		self.epsilon = round(self.epsilon - EPSILON_DECAY, 5)
 		if self.epsilon < MIN_EPSILON:
 			self.epsilon = MIN_EPSILON
+
+		# train the net
 		train_start = time()
 		self.net.train(self.replay_memory, batch_size=512, n_epochs=5)
 		train_end = time()
-		self.replay_memory.archive()
-		return mem_up, train_end - train_start
+
+		# write data to file
+		if WRITE_DATA:
+			self.replay_memory.write()
+			self.run_info.write()
+
+		# todo research different strategies for replay memory
+		self.replay_memory.clear()
+		return mem_up_time, train_end - train_start
 
 	def state_score(self, game_info):
 		"""
@@ -213,6 +228,9 @@ class FlowBot(BaseAgent):
 
 	def retire(self):
 		self.net.close()
+		if SAVE_DATA:
+			# todo for file in /temp copy file to /logs/<run_id>
+			pass
 
 	def __str__(self):
 		return "FBv2_" + NET_NAME + "(" + str(self.index) + ") " + ("blue" if self.team == 0 else "orange")
@@ -242,4 +260,7 @@ class EpisodeEndCondition:
 		self.was_met_fl = fl_reached
 		self.was_met_gs = goal_scored
 		self.was_met_ge = game_ended
+
+		self.iteration_count = 0
+
 		return fl_reached or goal_scored or game_ended

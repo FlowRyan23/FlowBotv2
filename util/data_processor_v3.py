@@ -278,9 +278,9 @@ def nn_to_rlbot_controls(nn_controls):
 	else:
 		controller_state.throttle = 0.0
 
-		controller_state.jump = nn_controls[6] == 1
-		controller_state.boost = nn_controls[7] == 1
-		controller_state.handbrake = nn_controls[8] == 1
+	controller_state.jump = (nn_controls[6] == 1)
+	controller_state.boost = (nn_controls[7] == 1)
+	controller_state.handbrake = (nn_controls[8] == 1)
 
 	if controller_state.handbrake:
 		controller_state.roll = controller_state.steer

@@ -3,6 +3,8 @@ import tensorflow as tf
 from enum import Enum
 from time import time
 
+TEMP_DIR = "E:/Studium/6. Semester/Bachelorarbeit/Code/RLBotPythonExample/util/temp/"
+LOG_DIR = "E:/Studium/6. Semester/Bachelorarbeit/Code/RLBotPythonExample/util/logs/"
 
 class NeuralNetwork:
 	def __init__(self, name, input_shape, n_classes):
@@ -32,7 +34,8 @@ class NeuralNetwork:
 		self.output = tf.layers.dense(self.output, units=size,
 									activation=activation,
 									kernel_initializer=tf.glorot_normal_initializer(),
-									name="L"+str(self.n_layers)+"-fc")
+									name="L"+str(self.n_layers)+"-fc",
+									bias_initializer=tf.random_normal_initializer())
 		self.n_layers += 1
 
 	def add_drop_out(self, rate):
@@ -71,7 +74,7 @@ class NeuralNetwork:
 		return self.session.run(self.output, feed_dict={self.x: states})[0]		# todo remove [0] when more than one operation is run
 
 	def train(self, replay_memory, batch_size, n_epochs, learning_rate=0.01):
-		# todo replay memory may return less than batch_size elements when ist does not contain enough
+		# todo replay memory may return less than batch_size elements when ist does not contain enough -> adjust training length
 		for i in range(int((replay_memory.size / batch_size) * n_epochs)+1):
 			states_batch, q_values_batch = replay_memory.get_random_batch(batch_size=batch_size)
 
@@ -88,20 +91,15 @@ class ActivationType(Enum):
 
 
 class ReplayMemory:
-	def __init__(self, n_actions, run_info, discount_factor=0.97):
+	def __init__(self, n_actions, discount_factor=0.97):
 		self.n_actions = n_actions
-		self.run_info = run_info
-		run_info.replay_memory = self
 		self.discount_factor = discount_factor
 
+		self.size = 0
 		self.states = []
 		self.q_values = []		# each entry is a list of n_actions float values
 		self.actions = []
 		self.rewards = []
-
-		self.archived = {"states": [], "q_values": [], "actions": [], "rewards": []}
-
-		self.size = 0
 
 		self.estimation_errors = []
 
@@ -129,36 +127,38 @@ class ReplayMemory:
 		end_time = time()
 		return end_time - start_time
 
-	def archive(self):
-		self.archived["states"].append(self.states)
-		self.archived["q_values"].append(self.q_values)
-		self.archived["actions"].append(self.actions)
-		self.archived["rewards"].append(self.rewards)
-
-		self.states = []
-		self.q_values = []
-		self.actions = []
-		self.rewards = []
-		self.size = 0
-
 	def get_random_batch(self, batch_size, use_archive=False):
 		if self.size <= 0:
 			return None
 
-		if use_archive:
-			if batch_size > self.size - 1 + len(self.archived):
-				batch_size = self.size - 1 + len(self.archived)
-			s = self.states + self.archived["states"]
-			qv = self.q_values + self.archived["q_values"]
-		else:
-			if batch_size > self.size-1:
-				batch_size = self.size-1
-			s = self.states
-			qv = self.q_values
+		# if the batch size is greater than the size of the memory the entire memory is returned
+		if batch_size > self.size-1:
+			return self.states, self.q_values
 
-		selection = np.random.choice([i for i in range(len(s))], size=batch_size, replace=False)
-
-		states_batch = np.array(s)[selection]
-		q_values_batch = np.array(qv)[selection]
+		selection = np.random.choice([i for i in range(self.size)], size=batch_size, replace=False)
+		states_batch = np.array(self.states)[selection]
+		q_values_batch = np.array(self.q_values)[selection]
 
 		return states_batch, q_values_batch
+
+	def clear(self):
+		self.size = 0
+		self.states = []
+		self.q_values = []
+		self.actions = []
+		self.rewards = []
+
+		self.estimation_errors = []
+
+	def write(self):
+		np.savetxt(TEMP_DIR + "estimation_errors.csv", self.estimation_errors, delimiter=",")
+		np.savetxt(TEMP_DIR + "rewards.csv", self.rewards, delimiter=",")
+		np.savetxt(TEMP_DIR + "q_values.csv", self.q_values, delimiter=",")
+
+		states_differentials = []
+		prev_state = self.states[0]
+		for state in self.states[1:]:
+			differential = [round(state[i] - prev_state[i], 4) for i in range(len(state))]
+			states_differentials.append(differential)
+			prev_state = state
+		np.savetxt(TEMP_DIR + "state_diffs.csv", states_differentials, delimiter=",")
