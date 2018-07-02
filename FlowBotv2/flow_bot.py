@@ -1,4 +1,4 @@
-import math
+import os
 import random
 import numpy as np
 from time import time
@@ -15,10 +15,12 @@ from rlbot.agents.base_agent import BaseAgent
 TRAIN = True
 SAVE_NET = True
 WRITE_DATA = True
-SAVE_DATA = True
+SAVE_DATA = WRITE_DATA and True
 LOAD_NET = False
-NET_PATH = "../Networks/saved/"
-LOAD_NET_NAME = "FlowBot1522424200"
+LOAD_NET_NAME = "FlowBot5B338C9B"
+NET_PATH = "E:/Studium/6. Semester/Bachelorarbeit/Code/RLBotPythonExample/Networks/saved/"
+TEMP_DIR = "E:/Studium/6. Semester/Bachelorarbeit/Code/RLBotPythonExample/util/temp/"
+LOG_DIR = "E:/Studium/6. Semester/Bachelorarbeit/Code/RLBotPythonExample/util/logs/"
 
 # info
 INFO = True
@@ -28,7 +30,7 @@ FITNESS_INFO = True
 INFO_INTERVAL = 10.0		# in seconds
 
 # net and training properties
-NET_NAME = "FlowBot" + str(math.floor(time()))
+NET_NAME = "FlowBot" + hex(int(time())).lstrip("0x").upper()
 BOT_TYPE = "all"
 N_INPUT = 29							# todo automate from INPUT_COMPOSITION
 N_OUTPUT = len(gi.get_action_states(BOT_TYPE))
@@ -60,8 +62,7 @@ class FlowBot(BaseAgent):
 		super().__init__(name, team, index)
 		if not TRAIN:
 			print("\n-----NOT TRAINING-----\n")
-
-		self.run_info = RunInfo()  # holds all information
+		os.makedirs(LOG_DIR + NET_NAME)
 
 		self.prev_info_time = time()				# used to keep track of time since last info
 		self.action_states = gi.get_action_states(BOT_TYPE)		# all actions the agent can choose from
@@ -71,7 +72,8 @@ class FlowBot(BaseAgent):
 		self.aps = 0						# actions per second
 
 		# list of tuples of (state, action, reward);
-		self.replay_memory = ReplayMemory(n_actions=N_OUTPUT, run_info=self.run_info)
+		self.replay_memory = ReplayMemory(n_actions=N_OUTPUT)
+		self.run_info = RunInfo()  # holds all information
 		self.prev_state = None
 		self.prev_action = None
 		self.prev_q_values = None
@@ -79,12 +81,15 @@ class FlowBot(BaseAgent):
 
 		self.user_input_cool_down = time()
 
-		self.net = NeuralNetwork(NET_NAME, [N_INPUT], N_OUTPUT)
-		self.net.add_fc(512, activation=ActivationType.RELU)
-		self.net.add_fc(512, activation=ActivationType.RELU)
-		self.net.add_fc(512, activation=ActivationType.RELU)
-		self.net.commit()
-		self.run_info.net = self.net
+		if LOAD_NET:
+			self.net = NeuralNetwork.restore(LOAD_NET_NAME, NET_PATH, new_name=NET_NAME, verbose=True)
+		else:
+			self.net = NeuralNetwork(NET_NAME, [N_INPUT], N_OUTPUT)
+			self.net.add_fc(512, activation=ActivationType.RELU)
+			self.net.add_fc(512, activation=ActivationType.RELU)
+			self.net.add_fc(512, activation=ActivationType.RELU)
+			self.net.commit()
+			self.run_info.net = self.net
 
 		if INFO:
 			print("Fitness Composition:", STATE_SCORE_COMPOSITION)
@@ -144,8 +149,7 @@ class FlowBot(BaseAgent):
 
 		# at the end of every episode the data in the replay memory is updated and the net is trained with the new data
 		if self.episode_end_condition.is_met(game_info) and TRAIN:
-			mem_update_time, training_time = self.next_episode()
-			self.run_info.episode(mem_update_time, training_time, verbose=EPISODE_INFO)
+			self.next_episode()
 
 		# info for debugging purposes
 		cur_time = time()
@@ -194,11 +198,13 @@ class FlowBot(BaseAgent):
 		if self.epsilon < MIN_EPSILON:
 			self.epsilon = MIN_EPSILON
 
+		# todo vary learning rate
 		# train the net
 		train_start = time()
-		self.net.train(self.replay_memory, batch_size=512, n_epochs=5)
+		self.net.train(self.replay_memory, batch_size=512, n_epochs=5, save=SAVE_NET)
 		train_end = time()
 
+		self.run_info.episode(mem_up_time, train_end - train_start, verbose=EPISODE_INFO)
 		# write data to file
 		if WRITE_DATA:
 			self.replay_memory.write()
@@ -206,7 +212,6 @@ class FlowBot(BaseAgent):
 
 		# todo research different strategies for replay memory
 		self.replay_memory.clear()
-		return mem_up_time, train_end - train_start
 
 	def state_score(self, game_info):
 		"""
@@ -227,10 +232,17 @@ class FlowBot(BaseAgent):
 		return state_score
 
 	def retire(self):
+		print("retire")
+		if SAVE_NET:
+			self.net.save()
 		self.net.close()
 		if SAVE_DATA:
-			# todo for file in /temp copy file to /logs/<run_id>
-			pass
+			for _, _, files in os.walk(TEMP_DIR):
+				for file in files:
+					with open(TEMP_DIR + file, "r") as src, open(LOG_DIR + NET_NAME + "/" + file, "w") as dest:
+						dest.write(src.read())
+					with open(TEMP_DIR + file, "w") as tmp:
+						tmp.write("")
 
 	def __str__(self):
 		return "FBv2_" + NET_NAME + "(" + str(self.index) + ") " + ("blue" if self.team == 0 else "orange")
@@ -261,6 +273,8 @@ class EpisodeEndCondition:
 		self.was_met_gs = goal_scored
 		self.was_met_ge = game_ended
 
-		self.iteration_count = 0
+		is_met = fl_reached or goal_scored or game_ended
+		if is_met:
+			self.iteration_count = 0
 
-		return fl_reached or goal_scored or game_ended
+		return is_met

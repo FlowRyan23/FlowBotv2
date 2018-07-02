@@ -110,3 +110,8 @@ ENV/
 # Gradle files
 /.gradle
 util/temp/
+
+Networks/saved/
+
+util/logs/
+

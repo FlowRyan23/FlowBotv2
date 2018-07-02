@@ -5,7 +5,6 @@ import util.stats as stats
 from matplotlib import style
 from time import time
 from util.game_info import as_to_str
-from util.stats import DistributionInfo as Stat
 
 TEMP_DIR = "E:/Studium/6. Semester/Bachelorarbeit/Code/RLBotPythonExample/util/temp/"
 LOG_DIR = "E:/Studium/6. Semester/Bachelorarbeit/Code/RLBotPythonExample/util/logs/"
@@ -15,7 +14,6 @@ ENTRY_SEPARATOR = "\n::Next Entry::\n"
 class RunInfo:
 	def __init__(self):
 		self.net = None
-		self.replay_memory = None
 		self.run_start_time = time()
 
 		self.iteration_count = 0
@@ -49,7 +47,6 @@ class RunInfo:
 			print("training took {0:.2f}sec".format(train_time))
 			print("Action stat:", self.action_stat)
 			print("User Actions:", self.user_action_count)
-			print("Average estimation error:", Stat(self.replay_memory.estimation_errors))
 
 		self.last_ep_iter = self.iteration_count
 		self.last_ep_time = time()
@@ -78,29 +75,17 @@ class RunInfo:
 
 	def write(self):
 		with open(TEMP_DIR + "user_actions.csv", "a") as file:
-			file.write(str(self.user_action_count))
+			file.write(str(self.user_action_count) + "\n")
 		with open(TEMP_DIR + "episode_lengths.csv", "a") as file:
-			file.write(str(self.episode_lengths[-1]))
+			file.write(str(self.episode_lengths[-1]) + "\n")
 		with open(TEMP_DIR + "episode_times.csv", "a") as file:
-			file.write(str(self.episode_times[-1]))
+			file.write(str(self.episode_times[-1]) + "\n")
 		with open(TEMP_DIR + "mem_up_times.csv", "a") as file:
-			file.write(str(self.mem_up_times[-1]))
+			file.write(str(self.mem_up_times[-1]) + "\n")
 		with open(TEMP_DIR + "train_times.csv", "a") as file:
-			file.write(str(self.train_times[-1]))
+			file.write(str(self.train_times[-1]) + "\n")
 		# todo action_stat
 		# todo self.state_score_data
-
-
-def close_file(file, save=False):
-	if save:
-		with open(TEMP_DIR + file, "r") as source, open(LOG_DIR + file.rstrip(".csv") + ".txt", "a") as dest:
-			dest.write(ENTRY_SEPARATOR)
-			line = source.readline()
-			while line != "":
-				dest.write(line)
-
-	with open(TEMP_DIR + "rewards.csv", "w") as f:
-		f.write("")
 
 
 def update_graphs(i):
@@ -110,7 +95,8 @@ def update_graphs(i):
 		if len(vals) < 1:
 			continue
 		info["plot_func"](info["axis"], vals)
-		# info["axis"].set_title(info["title"], fontdict={"fontsize": 12})
+		if len(info["axis"]) > 1:
+			info["axis"].set_title(info["title"], fontdict={"fontsize": 12})
 	print("updating graphs took {0:.2f}sec".format(time()-start_time))
 
 
@@ -169,18 +155,46 @@ def q_vals_plot(axis, vals):
 		axis[i].plot(x, y)
 
 
+def episode_lengths_plot(axis, vals):
+	x = [i for i in range(len(vals))]
+	axis.clear()
+	axis.plot(x, vals)
+
+
+def episode_times_plot(axis, vals):
+	x = [i for i in range(len(vals))]
+	axis.clear()
+	axis.plot(x, vals)
+
+
+def mem_up_times_plot(axis, vals):
+	x = [i for i in range(len(vals))]
+	axis.clear()
+	axis.plot(x, vals)
+
+
+def train_times_plot(axis, vals):
+	x = [i for i in range(len(vals))]
+	axis.clear()
+	axis.plot(x, vals)
+
+
 if __name__ == "__main__":
 	style.use("fivethirtyeight")
 	figure = plt.figure()
 
-	rows = 3
+	rows = 4
 	cols = 6
 	infos = [
 		{"title": "Estimation Errors Full", "file": "estimation_errors.csv", "axis": figure.add_subplot(rows, cols, 1), "plot_func": est_errs_full_plot},
 		{"title": "Estimation Errors Low", "file": "estimation_errors.csv", "axis": figure.add_subplot(rows, cols, 2), "plot_func": est_errs_low_plot},
 		{"title": "Rewards", "file": "rewards.csv", "axis": figure.add_subplot(rows, cols, 3), "plot_func": rewards_plot},
+		{"title": "Iterations per Episode", "file": "episode_lengths.csv", "axis": figure.add_subplot(rows, cols, 4), "plot_func": episode_lengths_plot},
+		{"title": "Episode length", "file": "episode_times.csv", "axis": figure.add_subplot(rows, cols, 5), "plot_func": episode_times_plot},
+		{"title": "Q_Update length", "file": "mem_up_times.csv", "axis": figure.add_subplot(rows, cols, 6), "plot_func": mem_up_times_plot},
+		{"title": "Training lenght", "file": "train_times.csv", "axis": figure.add_subplot(rows, cols, 7), "plot_func": train_times_plot},
 		# {"title": "States Differentials", "file": "state_diffs.csv", "axis": [figure.add_subplot(rows, cols, 6 + i) for i in range(10)], "plot_func": state_diff_plot},
-		{"title": "States Differentials", "file": "q_values.csv", "axis": [figure.add_subplot(rows, cols, 7 + i) for i in range(12)], "plot_func": q_vals_plot}
+		{"title": "States Differentials", "file": "q_values.csv", "axis": [figure.add_subplot(rows, cols, 13 + i) for i in range(12)], "plot_func": q_vals_plot}
 	]
 
 	ani = animation.FuncAnimation(figure, update_graphs, interval=10000)

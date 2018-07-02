@@ -1,9 +1,5 @@
 import util.vector_math as vmath
 import random
-from time import time
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-from util.stats import DistributionInfo as Stat
 
 location_TOLERANCE = 500	# measurement inaccuracy in uu
 BIG_BOOST_locationS = [

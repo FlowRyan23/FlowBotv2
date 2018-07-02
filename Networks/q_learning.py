@@ -1,15 +1,27 @@
+import os
 import numpy as np
 import tensorflow as tf
 from enum import Enum
 from time import time
+from configparser import ConfigParser
+from util.stats import DistributionInfo as Stat
+
 
 TEMP_DIR = "E:/Studium/6. Semester/Bachelorarbeit/Code/RLBotPythonExample/util/temp/"
 LOG_DIR = "E:/Studium/6. Semester/Bachelorarbeit/Code/RLBotPythonExample/util/logs/"
+DEFAULT_SAVE_PATH = "E:/Studium/6. Semester/Bachelorarbeit/Code/RLBotPythonExample/Networks/saved/"
+
 
 class NeuralNetwork:
-	def __init__(self, name, input_shape, n_classes):
+	def __init__(self, name, input_shape, n_classes, save_path=DEFAULT_SAVE_PATH):
+		self.net_config = ConfigParser()
+		self.net_config["Format"] = {"input_shape": str(input_shape).rstrip("]").lstrip("["), "n_classes": str(n_classes), "n_layers": 0}
+		self.net_config["Options"] = {"save_path": save_path}
+		self.net_config["Stats"] = {"total_steps": 0, "total_time": 0}
+
 		self.name = name
 		self.n_classes = n_classes
+		self.save_path = save_path
 
 		self.x = tf.placeholder(dtype=tf.float32, shape=[None] + input_shape, name="x")
 		self.learning_rate = tf.placeholder(dtype=tf.float32, shape=[])
@@ -36,7 +48,10 @@ class NeuralNetwork:
 									kernel_initializer=tf.glorot_normal_initializer(),
 									name="L"+str(self.n_layers)+"-fc",
 									bias_initializer=tf.random_normal_initializer())
+
+		self.net_config["Layer" + str(self.n_layers)] = {"type": "fc", "size": size, "activation": activation}
 		self.n_layers += 1
+		self.net_config["Format"]["n_layers"] = str(self.n_layers)
 
 	def add_drop_out(self, rate):
 		if self.committed:
@@ -44,13 +59,20 @@ class NeuralNetwork:
 
 		self.output = tf.layers.dropout(self.output, rate,
 									name="L"+str(self.n_layers)+"-do")
+
+		self.net_config["Layer" + str(self.n_layers)] = {"type": "do", "rate": rate}
 		self.n_layers += 1
+		self.net_config["Format"]["n_layers"] = str(self.n_layers)
 
 	def commit(self):
 		if self.committed:
 			return
 
-		self.add_fc(activation=ActivationType.RELU, size=self.n_classes)
+		self.output = tf.layers.dense(self.output, units=self.n_classes,
+									activation=ActivationType.RELU,
+									kernel_initializer=tf.glorot_normal_initializer(),
+									name="out",
+									bias_initializer=tf.random_normal_initializer())
 
 		squared_error = tf.square(self.output - self.q_values_new)
 		sum_squared_error = tf.reduce_sum(squared_error, axis=1)
@@ -64,19 +86,20 @@ class NeuralNetwork:
 	def close(self):
 		self.session.close()
 
-	def load(self, ckp_file):
-		self.saver.restore(self.session, save_path=ckp_file)
-
-	def save(self, path, steps):
-		self.saver.save(self.session, save_path=path, global_step=steps)
-
 	def run(self, states):
 		return self.session.run(self.output, feed_dict={self.x: states})[0]		# todo remove [0] when more than one operation is run
 
-	def train(self, replay_memory, batch_size, n_epochs, learning_rate=0.01):
+	def train(self, replay_memory, batch_size, n_epochs, learning_rate=0.01, save=True):
+		steps = 0
+		start_time = time()
+
 		# todo replay memory may return less than batch_size elements when ist does not contain enough -> adjust training length
-		for i in range(int((replay_memory.size / batch_size) * n_epochs)+1):
+		n_batches = replay_memory.size / batch_size
+		n_batches *= n_epochs
+		n_batches = int(n_batches) + 1
+		for i in range(n_batches):
 			states_batch, q_values_batch = replay_memory.get_random_batch(batch_size=batch_size)
+			steps += len(states_batch)
 
 			feed_dict = {self.x: states_batch,
 						self.q_values_new: q_values_batch,
@@ -84,10 +107,59 @@ class NeuralNetwork:
 
 			self.session.run(self.optimizer, feed_dict=feed_dict)
 
+		self.net_config["Stats"]["total_steps"] = str(int(self.net_config["Stats"]["total_steps"]) + steps)
+		self.net_config["Stats"]["total_time"] = str(float(self.net_config["Stats"]["total_time"]) + time() - start_time)
+		if save:
+			self.save()
+
+	def save(self):
+		if not os.path.isdir(self.save_path + self.name):
+			os.makedirs(self.save_path + self.name)
+		with open(self.save_path + self.name + "/net.cfg", "w") as cfg_file:
+			self.net_config.write(cfg_file)
+		self.saver.save(self.session, self.save_path + self.name + "/" + self.name)
+
+	def load(self, ckp_file):
+		self.saver.restore(self.session, save_path=ckp_file)
+
+	@staticmethod
+	def restore(name, path, new_name=None, verbose=False):
+		if verbose:
+			print("restoring {0:s} from {1:s}".format(name, path))
+			print("config file:", path + name + "/net.cfg")
+			print("tf checkpoint:", path + name + "/" + name + ".ckpt")
+
+		config = ConfigParser()
+		config.read(path + name + "/net.cfg")
+
+		name_ = (name if new_name is None else new_name)
+		input_shape = [int(s) for s in config["Format"]["input_shape"].split(",")]
+		n_classes = int(config["Format"]["n_classes"])
+		net = NeuralNetwork(name_, input_shape, n_classes, save_path=path)
+
+		for i in range(int(config["Format"]["n_layers"])):
+			l_type = config["Layer" + str(i)]
+			if l_type == "fc":
+				size = int(config["Layer" + str(i)]["size"])
+				activation = ActivationType.get(config["Layer" + str(i)]["activation"])
+				net.add_fc(size, activation)
+			elif l_type == "do":
+				rate = float(config["Layer" + str(i)]["rate"])
+				net.add_drop_out(rate)
+
+		net.commit()
+		net.load(path + name + "/" + name + ".ckpt")
+
 
 class ActivationType(Enum):
 	RELU = tf.nn.relu
 	SIGMOID = tf.nn.sigmoid
+
+	def get(self, act_type):
+		if act_type == "RELU":
+			return self.RELU
+		if act_type == "SIGMOID":
+			return self.SIGMOID
 
 
 class ReplayMemory:
@@ -125,9 +197,11 @@ class ReplayMemory:
 			self.estimation_errors[i] = abs(action_value - self.q_values[i][action])
 			self.q_values[i][action] = action_value
 		end_time = time()
+
+		print("Average estimation error:", Stat(self.estimation_errors))
 		return end_time - start_time
 
-	def get_random_batch(self, batch_size, use_archive=False):
+	def get_random_batch(self, batch_size):
 		if self.size <= 0:
 			return None
 
