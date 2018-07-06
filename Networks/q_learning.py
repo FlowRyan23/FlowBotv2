@@ -32,6 +32,9 @@ class NeuralNetwork:
 		self.session = None
 		self.saver = None
 		self.optimizer = None
+		self.merged_summary = None
+		# todo adding file_writer produces error: "TypeError: Expected an event_pb2.Event proto, but got <class 'tensorflow.core.util.event_pb2.Event'>"
+		# self.file_writer = tf.summary.FileWriter(LOG_DIR + self.name + "/tb")
 
 		self.committed = False
 		self.n_layers = 0
@@ -39,9 +42,14 @@ class NeuralNetwork:
 		self.tf_config = tf.ConfigProto()
 		self.tf_config.gpu_options.allow_growth = True
 
-	def add_fc(self, size, activation):
+	def add_fc(self, size, activation, verbose=False):
 		if self.committed:
+			if verbose:
+				print(self.name, "is already committed. Can not add fc layer")
 			return
+
+		if verbose:
+			print("adding fc layer to {0:s} with size {1:d} and activation {2:s}".format(self.name, size, ActivationType.string_of(activation)))
 
 		self.output = tf.layers.dense(self.output, units=size,
 									activation=activation,
@@ -49,23 +57,42 @@ class NeuralNetwork:
 									name="L"+str(self.n_layers)+"-fc",
 									bias_initializer=tf.random_normal_initializer())
 
-		self.net_config["Layer" + str(self.n_layers)] = {"type": "fc", "size": size, "activation": activation}
+		with tf.name_scope("L" + str(self.n_layers)):
+			tf.summary.histogram("act", self.output)
+
+		self.net_config["Layer" + str(self.n_layers)] = {"type": "fc", "size": size, "activation": ActivationType.string_of(activation)}
 		self.n_layers += 1
 		self.net_config["Format"]["n_layers"] = str(self.n_layers)
 
-	def add_drop_out(self, rate):
+		if verbose:
+			print("Added fc layer to", self.name)
+
+	def add_drop_out(self, rate, verbose=False):
 		if self.committed:
+			if verbose:
+				print(self.name, "is already committed. Can not add drop out layer")
 			return
+
+		if verbose:
+			print("adding drop out layer to {0:s} with rate {1:d}".format(self.name, rate))
 
 		self.output = tf.layers.dropout(self.output, rate,
 									name="L"+str(self.n_layers)+"-do")
+
+		with tf.name_scope("L" + str(self.n_layers)):
+			tf.summary.histogram("act", self.output)
 
 		self.net_config["Layer" + str(self.n_layers)] = {"type": "do", "rate": rate}
 		self.n_layers += 1
 		self.net_config["Format"]["n_layers"] = str(self.n_layers)
 
-	def commit(self):
+		if verbose:
+			print("Added drop out layer to", self.name)
+
+	def commit(self, verbose=False):
 		if self.committed:
+			if verbose:
+				print(self.name, "is already committed. Can not commit again")
 			return
 
 		self.output = tf.layers.dense(self.output, units=self.n_classes,
@@ -82,9 +109,17 @@ class NeuralNetwork:
 		self.saver = tf.train.Saver()
 		self.session = tf.Session(config=self.tf_config)
 		self.session.run(tf.global_variables_initializer())
+		# print("merging summaries")
+		self.merged_summary = tf.summary.merge_all()
+		# print("adding graph")
+		# self.file_writer.add_graph(self.session.graph)
+
+		if verbose:
+			print(self.name, "was successfully committed")
 
 	def close(self):
 		self.session.close()
+		print(self.name, "was closed")
 
 	def run(self, states):
 		return self.session.run(self.output, feed_dict={self.x: states})[0]		# todo remove [0] when more than one operation is run
@@ -105,7 +140,9 @@ class NeuralNetwork:
 						self.q_values_new: q_values_batch,
 						self.learning_rate: learning_rate}
 
-			self.session.run(self.optimizer, feed_dict=feed_dict)
+			_, summary = self.session.run([self.optimizer, self.merged_summary], feed_dict=feed_dict)
+			# print("adding summary")
+			# self.file_writer.add_summary(summary, global_step=self.get_step_count() + steps)
 
 		self.net_config["Stats"]["total_steps"] = str(int(self.net_config["Stats"]["total_steps"]) + steps)
 		self.net_config["Stats"]["total_time"] = str(float(self.net_config["Stats"]["total_time"]) + time() - start_time)
@@ -117,7 +154,8 @@ class NeuralNetwork:
 			os.makedirs(self.save_path + self.name)
 		with open(self.save_path + self.name + "/net.cfg", "w") as cfg_file:
 			self.net_config.write(cfg_file)
-		self.saver.save(self.session, self.save_path + self.name + "/" + self.name)
+		save_path = self.saver.save(self.session, self.save_path + self.name + "/" + self.name)
+		print("saved net to:", save_path)
 
 	def load(self, ckp_file):
 		self.saver.restore(self.session, save_path=ckp_file)
@@ -137,29 +175,47 @@ class NeuralNetwork:
 		n_classes = int(config["Format"]["n_classes"])
 		net = NeuralNetwork(name_, input_shape, n_classes, save_path=path)
 
-		for i in range(int(config["Format"]["n_layers"])):
-			l_type = config["Layer" + str(i)]
+		n_layers = int(config["Format"]["n_layers"])
+		print("N_Layers:", n_layers)
+		for i in range(n_layers):
+			l_type = config["Layer" + str(i)]["type"]
 			if l_type == "fc":
 				size = int(config["Layer" + str(i)]["size"])
 				activation = ActivationType.get(config["Layer" + str(i)]["activation"])
-				net.add_fc(size, activation)
+				net.add_fc(size, activation, verbose=verbose)
 			elif l_type == "do":
 				rate = float(config["Layer" + str(i)]["rate"])
-				net.add_drop_out(rate)
+				net.add_drop_out(rate, verbose=verbose)
+
+		for key in config["Stats"]:
+			net.net_config["Stats"][key] = config["Stats"][key]
 
 		net.commit()
-		net.load(path + name + "/" + name + ".ckpt")
+		net.load(path + name + "/" + name) # + ".ckpt")
+
+		return net
+
+	def get_step_count(self):
+		return int(self.net_config["Stats"]["total_steps"])
 
 
 class ActivationType(Enum):
 	RELU = tf.nn.relu
 	SIGMOID = tf.nn.sigmoid
 
-	def get(self, act_type):
+	@staticmethod
+	def get(act_type):
 		if act_type == "RELU":
-			return self.RELU
+			return ActivationType.RELU
 		if act_type == "SIGMOID":
-			return self.SIGMOID
+			return ActivationType.SIGMOID
+
+	@staticmethod
+	def string_of(act_type):
+		if act_type == ActivationType.RELU:
+			return "RELU"
+		if act_type == ActivationType.SIGMOID:
+			return "SIGMOID"
 
 
 class ReplayMemory:
@@ -173,49 +229,89 @@ class ReplayMemory:
 		self.actions = []
 		self.rewards = []
 
+		self.predicted_q_values = []
+
 		self.estimation_errors = []
 
 	def add(self, state, q_values, action, reward):
+		"""
+		adds a new entry to memory
+		:param state: the state of the environment
+		:param q_values: the predicted q-values for every possible action in this state
+		:param action: the action that was chosen
+		:param reward: the reward received for the transition from state to next state through performing action
+		:return:
+		"""
 		self.states.append(state)
 		self.q_values.append(q_values)
 		self.actions.append(action)
 		self.rewards.append(reward)
 		self.size += 1
 
-	def update_q_values(self):
+	def update_q_values(self, sarsa=False):
+		"""
+		calculates the actual q-values from the predicted ones. during play only the predicted values are stored
+		as the real ones are not known (they depend on future states). ideally this method is called at the end of
+		an episode -> no future states exist/have any influence on the value of current or past states.
+		:param sarsa: whether the sarsa (state action reward state action) variant of q-value updates should be used
+						the sarsa-variant uses the q-value of the selected next action instead of the highest q-value
+		:return:
+		"""
 		if self.size < 1:
 			return -1
 
 		start_time = time()
 		self.estimation_errors = np.zeros(shape=[self.size])
+
+		# the q-value of the last step should be the reward in that step
 		self.q_values[-1][self.actions[-1]] = self.rewards[-1]
+
+		# the update moves from the present to the past -> from the back to the front of the array
 		for i in reversed(range(self.size-1)):
 			action = self.actions[i]
 			reward = self.rewards[i]
 
-			action_value = reward + self.discount_factor * np.max(self.q_values[i+1])
+			# the q-value for the action is composed of the immediate reward + discounted future reward
+			if sarsa:
+				following_action = self.actions[i + 1]
+				action_value = reward + self.discount_factor * self.q_values[i + 1][following_action]
+			else:
+				action_value = reward + self.discount_factor * np.max(self.q_values[i+1])
 			self.estimation_errors[i] = abs(action_value - self.q_values[i][action])
+
+			# only the q-value for the selected action can be updated
 			self.q_values[i][action] = action_value
 		end_time = time()
 
 		print("Average estimation error:", Stat(self.estimation_errors))
 		return end_time - start_time
 
-	def get_random_batch(self, batch_size):
+	def get_random_batch(self, batch_size, duplicates=False):
+		"""
+		get a batch of randomly selected state-q_value-pairs
+		:param duplicates: whether duplicates are allowed
+		:param batch_size: the number of state-q_value-pairs returned; if not enough entries are available
+							and not duplicates are allowed less pairs are returned
+		:return: a list of states and a list of q-values. corresponding entries have the same index
+		"""
 		if self.size <= 0:
 			return None
 
 		# if the batch size is greater than the size of the memory the entire memory is returned
-		if batch_size > self.size-1:
+		if batch_size > self.size-1 and not duplicates:
 			return self.states, self.q_values
 
-		selection = np.random.choice([i for i in range(self.size)], size=batch_size, replace=False)
+		selection = np.random.choice([i for i in range(self.size)], size=batch_size, replace=duplicates)
 		states_batch = np.array(self.states)[selection]
 		q_values_batch = np.array(self.q_values)[selection]
 
 		return states_batch, q_values_batch
 
 	def clear(self):
+		"""
+		deletes all values from memory. only the number of actions and the discount factor are conserved
+		:return:
+		"""
 		self.size = 0
 		self.states = []
 		self.q_values = []
@@ -226,8 +322,22 @@ class ReplayMemory:
 
 	def write(self):
 		np.savetxt(TEMP_DIR + "estimation_errors.csv", self.estimation_errors, delimiter=",")
-		np.savetxt(TEMP_DIR + "rewards.csv", self.rewards, delimiter=",")
+		# np.savetxt(TEMP_DIR + "rewards.csv", self.rewards, delimiter=",")		# replaced with lines 187-189
 		np.savetxt(TEMP_DIR + "q_values.csv", self.q_values, delimiter=",")
+
+		with open(TEMP_DIR + "rewards.csv", "a") as rewards_file:
+			if len(self.rewards) > 0:
+				avrg_reward = sum(self.rewards) / len(self.rewards)
+				rewards_file.write(str(avrg_reward) + "\n")
+			else:
+				print("No rewards to be written")
+
+		with open(TEMP_DIR + "avrg_estimation_errors.csv", "a") as file:
+			if len(self.estimation_errors) > 0:
+				avrg_est_err = sum(self.estimation_errors) / len(self.estimation_errors)
+				file.write(str(avrg_est_err) + "\n")
+			else:
+				print("No estimation errors to be written")
 
 		states_differentials = []
 		prev_state = self.states[0]

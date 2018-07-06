@@ -1,5 +1,4 @@
 import statistics
-import numpy as np
 
 
 class DistributionInfo:
@@ -16,7 +15,18 @@ class DistributionInfo:
 
 
 def average_into(l, n_points):
-	res = np.array_split(l, n_points)
-	for i in range(len(res)):
-		res[i] = sum(res[i]) / len(res[i])
+	if len(l) <= n_points:
+		return l
+
+	res = []
+	batch_size = len(l)/n_points
+	for i in range(n_points):
+		if i == n_points:
+			begin = int(i*batch_size)
+			end = len(l)-1
+		else:
+			begin = int(i*batch_size)
+			end = int((i+1)*batch_size)
+		res.append(sum(l[begin:end]) / (end-begin))
+
 	return res

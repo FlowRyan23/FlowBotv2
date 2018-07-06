@@ -20,6 +20,7 @@ class RunInfo:
 		self.last_iter_time = time()
 		self.action_stat = {}
 		self.user_action_count = 0
+		self.net_output = []
 
 		self.episode_count = 0
 		self.last_ep_time = time()
@@ -51,7 +52,9 @@ class RunInfo:
 		self.last_ep_iter = self.iteration_count
 		self.last_ep_time = time()
 
-	def iteration(self, action, user=False, verbose=False):
+	def iteration(self, net_output, action, user=False, verbose=False):
+		self.net_output.append(net_output)
+
 		if user:
 			self.user_action_count += 1
 		try:
@@ -84,6 +87,10 @@ class RunInfo:
 			file.write(str(self.mem_up_times[-1]) + "\n")
 		with open(TEMP_DIR + "train_times.csv", "a") as file:
 			file.write(str(self.train_times[-1]) + "\n")
+		with open(TEMP_DIR + "net_output.csv", "a") as file:
+			for entry in self.net_output:
+				file.write(str(entry) + "\n")
+			self.net_output = []
 		# todo action_stat
 		# todo self.state_score_data
 
@@ -95,8 +102,11 @@ def update_graphs(i):
 		if len(vals) < 1:
 			continue
 		info["plot_func"](info["axis"], vals)
-		if len(info["axis"]) > 1:
+		try:
 			info["axis"].set_title(info["title"], fontdict={"fontsize": 12})
+		except AttributeError:
+			for a in info["axis"]:
+				a.set_title(info["title"], fontdict={"fontsize": 12})
 	print("updating graphs took {0:.2f}sec".format(time()-start_time))
 
 
@@ -145,57 +155,75 @@ def state_diff_plot(axis, vals):
 
 def q_vals_plot(axis, vals):
 	n_displayed = 100
-	x = [i for i in range(n_displayed)]
 
 	ys = np.array_split(vals, 12, axis=1)
 
 	for i in range(len(ys)):
 		y = stats.average_into(ys[i], n_displayed)
+		x = [i for i in range(len(y))]
 		axis[i].clear()
 		axis[i].plot(x, y)
 
 
-def episode_lengths_plot(axis, vals):
-	x = [i for i in range(len(vals))]
+# todo x-Axis gets wrong names
+def simple_averaged_plot(axis, vals):
+	n_points = min(len(vals), 100)
+	x = [i for i in range(n_points)]
+	y = stats.average_into(vals, n_points)
 	axis.clear()
-	axis.plot(x, vals)
+	axis.plot(x, y)
 
 
-def episode_times_plot(axis, vals):
-	x = [i for i in range(len(vals))]
-	axis.clear()
-	axis.plot(x, vals)
-
-
-def mem_up_times_plot(axis, vals):
-	x = [i for i in range(len(vals))]
-	axis.clear()
-	axis.plot(x, vals)
-
-
-def train_times_plot(axis, vals):
+def simple_plot(axis, vals):
 	x = [i for i in range(len(vals))]
 	axis.clear()
 	axis.plot(x, vals)
 
 
 if __name__ == "__main__":
-	style.use("fivethirtyeight")
-	figure = plt.figure()
+	diagrams = True
+	read_file = False
+	plot_test = False
 
-	rows = 4
-	cols = 6
-	infos = [
-		{"title": "Estimation Errors Full", "file": "estimation_errors.csv", "axis": figure.add_subplot(rows, cols, 1), "plot_func": est_errs_full_plot},
-		{"title": "Estimation Errors Low", "file": "estimation_errors.csv", "axis": figure.add_subplot(rows, cols, 2), "plot_func": est_errs_low_plot},
-		{"title": "Rewards", "file": "rewards.csv", "axis": figure.add_subplot(rows, cols, 3), "plot_func": rewards_plot},
-		{"title": "Iterations per Episode", "file": "episode_lengths.csv", "axis": figure.add_subplot(rows, cols, 4), "plot_func": episode_lengths_plot},
-		{"title": "Episode length", "file": "episode_times.csv", "axis": figure.add_subplot(rows, cols, 5), "plot_func": episode_times_plot},
-		{"title": "Q_Update length", "file": "mem_up_times.csv", "axis": figure.add_subplot(rows, cols, 6), "plot_func": mem_up_times_plot},
-		{"title": "Training lenght", "file": "train_times.csv", "axis": figure.add_subplot(rows, cols, 7), "plot_func": train_times_plot},
-		# {"title": "States Differentials", "file": "state_diffs.csv", "axis": [figure.add_subplot(rows, cols, 6 + i) for i in range(10)], "plot_func": state_diff_plot},
-		{"title": "States Differentials", "file": "q_values.csv", "axis": [figure.add_subplot(rows, cols, 13 + i) for i in range(12)], "plot_func": q_vals_plot}
-	]
+	if diagrams:
+		style.use("fivethirtyeight")
+		figure = plt.figure()
 
-	ani = animation.FuncAnimation(figure, update_graphs, interval=10000)
-	plt.show()
+		rows = 4
+		cols = 6
+		infos = [
+			{"title": "Estimation Errors Full", "file": "estimation_errors.csv", "axis": figure.add_subplot(rows, cols, 1), "plot_func": est_errs_full_plot},
+			{"title": "Estimation Errors Low", "file": "estimation_errors.csv", "axis": figure.add_subplot(rows, cols, 2), "plot_func": est_errs_low_plot},
+			{"title": "Averaged Estimation Errors", "file": "avrg_estimation_errors.csv", "axis": figure.add_subplot(rows, cols, 3), "plot_func": simple_averaged_plot},
+			{"title": "Rewards", "file": "rewards.csv", "axis": figure.add_subplot(rows, cols, 4), "plot_func": rewards_plot},
+			{"title": "Iterations per Episode", "file": "episode_lengths.csv", "axis": figure.add_subplot(rows, cols, 5), "plot_func": simple_averaged_plot},
+			{"title": "Episode length", "file": "episode_times.csv", "axis": figure.add_subplot(rows, cols, 6), "plot_func": simple_averaged_plot},
+			{"title": "Q_Update length", "file": "mem_up_times.csv", "axis": figure.add_subplot(rows, cols, 7), "plot_func": simple_averaged_plot},
+			{"title": "Training lenght", "file": "train_times.csv", "axis": figure.add_subplot(rows, cols, 8), "plot_func": simple_averaged_plot},
+			# {"title": "States Differentials", "file": "state_diffs.csv", "axis": [figure.add_subplot(rows, cols, 13 + i) for i in range(10)], "plot_func": state_diff_plot},
+			{"title": "Q-Values", "file": "q_values.csv", "axis": [figure.add_subplot(rows, cols, 13 + i) for i in range(12)], "plot_func": q_vals_plot}
+		]
+
+		ani = animation.FuncAnimation(figure, update_graphs, interval=2000)
+		plt.show()
+
+	if read_file:
+		q_vals = np.genfromtxt("./logs/FlowBot5B3A33F4/q_values.csv", dtype=np.float32, delimiter=",")
+		stat = [0 for _ in range(len(q_vals[0]))]
+		for i in range(len(q_vals)):
+			stat[np.argmax(q_vals[i])] += 1
+		print(stat)
+
+		# for i in range(len(q_vals[0])):
+		#	print(int(sum([q_vals[a][i] for a in range(len(q_vals))])))
+
+	if plot_test:
+		from random import randrange
+		x = [i for i in range(50)]
+		y = [randrange(0, 50) for a in range(250)]
+
+		averaged_y = stats.average_into(y, 50)
+		plt.plot(x, averaged_y)
+		plt.show()
+
+

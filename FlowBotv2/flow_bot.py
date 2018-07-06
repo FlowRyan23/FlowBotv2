@@ -14,10 +14,10 @@ from rlbot.agents.base_agent import BaseAgent
 # load/save behavior
 TRAIN = True
 SAVE_NET = True
-WRITE_DATA = True
-SAVE_DATA = WRITE_DATA and True
+COLLECT_DATA = True
+SAVE_DATA = COLLECT_DATA and True
 LOAD_NET = False
-LOAD_NET_NAME = "FlowBot5B338C9B"
+LOAD_NET_NAME = "FlowBot1530614290"
 NET_PATH = "E:/Studium/6. Semester/Bachelorarbeit/Code/RLBotPythonExample/Networks/saved/"
 TEMP_DIR = "E:/Studium/6. Semester/Bachelorarbeit/Code/RLBotPythonExample/util/temp/"
 LOG_DIR = "E:/Studium/6. Semester/Bachelorarbeit/Code/RLBotPythonExample/util/logs/"
@@ -30,12 +30,12 @@ FITNESS_INFO = True
 INFO_INTERVAL = 10.0		# in seconds
 
 # net and training properties
-NET_NAME = "FlowBot" + hex(int(time())).lstrip("0x").upper()
-BOT_TYPE = "all"
+NET_NAME = "FlowBot" + str(int(time()))
+BOT_TYPE = "flying"
 N_INPUT = 29							# todo automate from INPUT_COMPOSITION
 N_OUTPUT = len(gi.get_action_states(BOT_TYPE))
 START_EPSILON = 0.9						# chance that a random action will be chosen instead of the one with highest q_value
-EPSILON_DECAY = 2e-3					# amount the epsilon value decreases every episode
+EPSILON_DECAY = 1e-3					# amount the epsilon value decreases every episode
 MIN_EPSILON = 0.1						# minimum epsilon value
 
 # how strongly the individual components of fitness contribute to the whole
@@ -67,7 +67,7 @@ class FlowBot(BaseAgent):
 		self.prev_info_time = time()				# used to keep track of time since last info
 		self.action_states = gi.get_action_states(BOT_TYPE)		# all actions the agent can choose from
 
-		self.episode_end_condition = EpisodeEndCondition(fixed_length=5e+3, goal=True, game_end=False)
+		self.episode_end_condition = EpisodeEndCondition(landed=True)
 		self.epsilon = START_EPSILON
 		self.aps = 0						# actions per second
 
@@ -92,6 +92,7 @@ class FlowBot(BaseAgent):
 			self.run_info.net = self.net
 
 		if INFO:
+			print("FlowBot[name={0:s}], team={1:d}, index={2:d}".format(name, team, index))
 			print("Fitness Composition:", STATE_SCORE_COMPOSITION)
 
 		# the net is ready to be called
@@ -102,7 +103,7 @@ class FlowBot(BaseAgent):
 		self.aps += 1
 
 		game_info = gi.GameInfo(game_tick_packet)		# the game_tick_packet struct is converted to a GameInfo-Object
-		state = game_info.full_state()				# a list of float values to be fed to the net
+		state = game_info.full_state()					# a list of float values to be fed to the net
 
 		# set the reward for the previous iteration; not possible in the first iteration because not previous state and action are available
 		if self.prev_state is not None and self.prev_q_values is not None and self.prev_action is not None:
@@ -113,14 +114,14 @@ class FlowBot(BaseAgent):
 		self.prev_state = state
 		self.prev_game_info = game_info
 
-		q_values = self.net.run([state])
+		predicted_q_values = self.net.run([state])
 		if random.random() < self.epsilon:
-			chosen_class = random.randrange(0, len(q_values))
+			chosen_class = random.randrange(0, len(predicted_q_values))
 		else:
-			chosen_class = np.argmax(q_values)
+			chosen_class = np.argmax(predicted_q_values)
 		agent_action = self.action_states[chosen_class]
 
-		self.prev_q_values = q_values
+		self.prev_q_values = predicted_q_values
 
 		# get the input from the controller
 		user_action = xbox_to_nn_controls(get_controller_output())
@@ -160,7 +161,7 @@ class FlowBot(BaseAgent):
 			print("Epsilon:", self.epsilon)
 			print("Memory size:", self.replay_memory.size)
 			print("Net input:", state)
-			print("Net Output:", q_values)
+			print("Net Output:", str(predicted_q_values))		# todo does NOT print predicted_q_values (only prints array of 0s)
 			print("Action:", selected_action)
 			# print("Return Vector:", return_controller_state)
 			# print("------------------------------------------------------")
@@ -169,7 +170,7 @@ class FlowBot(BaseAgent):
 			self.prev_info_time = cur_time		# set time of previous info to now
 			self.aps = 0					# reset actions per second
 
-		self.run_info.iteration(selected_action, user=(actor == "user"), verbose=SPAM_INFO)
+		self.run_info.iteration(net_output=predicted_q_values, action=selected_action, user=(actor == "user"), verbose=SPAM_INFO)
 
 		return return_controller_state
 
@@ -201,12 +202,12 @@ class FlowBot(BaseAgent):
 		# todo vary learning rate
 		# train the net
 		train_start = time()
-		self.net.train(self.replay_memory, batch_size=512, n_epochs=5, save=SAVE_NET)
+		self.net.train(self.replay_memory, batch_size=512, n_epochs=4, save=SAVE_NET)
 		train_end = time()
 
 		self.run_info.episode(mem_up_time, train_end - train_start, verbose=EPISODE_INFO)
 		# write data to file
-		if WRITE_DATA:
+		if COLLECT_DATA:
 			self.replay_memory.write()
 			self.run_info.write()
 
@@ -249,31 +250,39 @@ class FlowBot(BaseAgent):
 
 
 class EpisodeEndCondition:
-	def __init__(self, fixed_length=None, goal=True, game_end=False):
+	def __init__(self, fixed_length=None, goal=False, game_end=False, landed=False):
 		self.fl = fixed_length
 		self.gs = goal
 		self.ge = game_end
+		self.la = landed
 
 		self.iteration_count = 0
 		self.was_round_active = True
+		self.was_on_ground = True
 
 		self.was_met_fl = False
 		self.was_met_gs = False
 		self.was_met_ge = False
+		self.was_met_la = False
 
-	def is_met(self, state):
+	def is_met(self, state, player_id=0):
 		self.iteration_count += 1
+		is_on_ground = state.get_player(player_id).is_on_ground
 
 		fl_reached = self.fl is not None and self.iteration_count >= self.fl
 		goal_scored = self.gs and not state.is_round_active and self.was_round_active
 		game_ended = self.ge and state.is_match_ended
+		has_landed = self.la and not self.was_on_ground and is_on_ground
 
 		self.was_round_active = state.is_round_active
+		self.was_on_ground = is_on_ground
+
 		self.was_met_fl = fl_reached
 		self.was_met_gs = goal_scored
 		self.was_met_ge = game_ended
+		self.was_met_la = has_landed
 
-		is_met = fl_reached or goal_scored or game_ended
+		is_met = fl_reached or goal_scored or game_ended or has_landed
 		if is_met:
 			self.iteration_count = 0
 
