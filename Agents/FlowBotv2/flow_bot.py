@@ -2,8 +2,10 @@ import os
 import random
 import numpy as np
 from time import time
+from configparser import ConfigParser
 
 import util.game_info as gi
+from util.vector_math import angle, Vector3
 from util.information import RunInfo
 from util.data_processor_v3 import nn_to_rlbot_controls, xbox_to_nn_controls
 from util.XInputReader import get_xbox_output as get_controller_output
@@ -16,11 +18,13 @@ TRAIN = True
 SAVE_NET = True
 COLLECT_DATA = True
 SAVE_DATA = COLLECT_DATA and True
-LOAD_NET = False
-LOAD_NET_NAME = "FlowBot1530614290"
-NET_PATH = "E:/Studium/6. Semester/Bachelorarbeit/Code/RLBotPythonExample/Networks/saved/"
-TEMP_DIR = "E:/Studium/6. Semester/Bachelorarbeit/Code/RLBotPythonExample/util/temp/"
-LOG_DIR = "E:/Studium/6. Semester/Bachelorarbeit/Code/RLBotPythonExample/util/logs/"
+LOAD = False
+PRESERVE = True
+LOAD_BOT_NAME = "FlowBot1530958270"
+PROJECT_ROOT = str(__file__).rstrip("Agents/FlowBotv2/flow_bot.py")
+NET_PATH = PROJECT_ROOT + "Networks/saved/"
+TEMP_DIR = PROJECT_ROOT + "util/temp/"
+LOG_DIR = PROJECT_ROOT + "util/logs/"
 
 # info
 INFO = True
@@ -31,12 +35,28 @@ INFO_INTERVAL = 10.0		# in seconds
 
 # net and training properties
 NET_NAME = "FlowBot" + str(int(time()))
-BOT_TYPE = "flying"
+BOT_TYPE = "no_noop"
 N_INPUT = 29							# todo automate from INPUT_COMPOSITION
 N_OUTPUT = len(gi.get_action_states(BOT_TYPE))
 START_EPSILON = 0.9						# chance that a random action will be chosen instead of the one with highest q_value
 EPSILON_DECAY = 1e-3					# amount the epsilon value decreases every episode
 MIN_EPSILON = 0.1						# minimum epsilon value
+
+# end conditions
+EC_FIXED_LENGTH = None
+EC_GOAL = False
+EC_GAME_END = False
+EC_LANDED = True
+END_CONDITIONS = [EC_FIXED_LENGTH, EC_GOAL, EC_GAME_END, EC_LANDED]
+
+# rewards
+RE_HEIGHT = True						# car.z / ceiling_height
+RE_AIRTIME = False						# +1 for every iteration where !car.on_ground (given when landed)
+RE_BALL_DIST = False					# distance between car and ball
+RE_SS_DIFF = False						# difference between current and previous state score
+RE_FACING_UP = True						# angle between z-axes and car.facing (normalized to 0-1)
+RE_FACING_OPP = False					# angle between y-axes and car.facing (normalized to 0-1)
+REWARDS = [RE_HEIGHT, RE_AIRTIME, RE_BALL_DIST, RE_SS_DIFF, RE_FACING_UP, RE_FACING_OPP]
 
 # how strongly the individual components of fitness contribute to the whole
 STATE_SCORE_COMPOSITION = {
@@ -62,12 +82,11 @@ class FlowBot(BaseAgent):
 		super().__init__(name, team, index)
 		if not TRAIN:
 			print("\n-----NOT TRAINING-----\n")
-		os.makedirs(LOG_DIR + NET_NAME)
 
 		self.prev_info_time = time()				# used to keep track of time since last info
 		self.action_states = gi.get_action_states(BOT_TYPE)		# all actions the agent can choose from
 
-		self.episode_end_condition = EpisodeEndCondition(landed=True)
+		self.episode_end_condition = EpisodeEndCondition()
 		self.epsilon = START_EPSILON
 		self.aps = 0						# actions per second
 
@@ -78,13 +97,14 @@ class FlowBot(BaseAgent):
 		self.prev_action = None
 		self.prev_q_values = None
 		self.prev_game_info = None
+		self.reward_accumulator = 0		# for reward functions that need more than one iteration
 
 		self.user_input_cool_down = time()
 
-		if LOAD_NET:
-			self.net = NeuralNetwork.restore(LOAD_NET_NAME, NET_PATH, new_name=NET_NAME, verbose=True)
+		if LOAD:
+			self.load(preserve=PRESERVE)
 		else:
-			self.net = NeuralNetwork(NET_NAME, [N_INPUT], N_OUTPUT)
+			self.net = NeuralNetwork(NET_NAME, [N_INPUT], len(self.action_states))
 			self.net.add_fc(512, activation=ActivationType.RELU)
 			self.net.add_fc(512, activation=ActivationType.RELU)
 			self.net.add_fc(512, activation=ActivationType.RELU)
@@ -92,7 +112,7 @@ class FlowBot(BaseAgent):
 			self.run_info.net = self.net
 
 		if INFO:
-			print("FlowBot[name={0:s}], team={1:d}, index={2:d}".format(name, team, index))
+			print("FlowBot[name={0:s}], team={1:d}, index={2:d}".format(self.name, self.team, self.index))
 			print("Fitness Composition:", STATE_SCORE_COMPOSITION)
 
 		# the net is ready to be called
@@ -152,6 +172,11 @@ class FlowBot(BaseAgent):
 		if self.episode_end_condition.is_met(game_info) and TRAIN:
 			self.next_episode()
 
+			if self.run_info.episode_count % 50 == 0:
+				self.save(info_files=True)
+			elif self.run_info.episode_count % 10 == 0:
+				self.save()
+
 		# info for debugging purposes
 		cur_time = time()
 		if INFO and cur_time-self.prev_info_time > INFO_INTERVAL:
@@ -177,12 +202,37 @@ class FlowBot(BaseAgent):
 	# todo improve
 	def reward(self, cur_game_info):
 		"""
-		calculates the reward the agent receives for transitioning from state to new_state using the chosen action
+		calculates the reward the agent receives for transitioning from one state(self.prev_game_info) to another(cur_game_info) using the chosen action
 		:param cur_game_info: the state the agent moved to
 		:return: the reward for the change in state
 		"""
+		car = cur_game_info.get_player(self.index)
 
-		reward = cur_game_info.get_player(self.index).location.z / gi.CEILING_HEIGHT
+		reward = 0
+
+		if RE_AIRTIME:
+			if self.episode_end_condition.is_met(cur_game_info, remember=False):
+				reward += self.reward_accumulator
+				print("Airtime:", reward)
+				self.reward_accumulator = 0
+			else:
+				if not car.is_on_ground:
+					self.reward_accumulator += 1
+
+		if RE_HEIGHT:
+			reward += car.location.z / gi.CEILING_HEIGHT
+
+		if RE_FACING_UP:
+			vertical = Vector3(0, 0, 1)
+			reward += angle(car.get_facing(), vertical) / 180
+
+		if RE_FACING_OPP:
+			forward = Vector3(0, 1, 0)
+			reward += angle(car.get_facing(), forward) / 180
+
+		if RE_BALL_DIST:
+			reward = cur_game_info.dist_to_ball(player_id=self.index)[0]
+
 		# reward = self.state_score(cur_game_info) - self.state_score(self.prev_game_info)
 		return reward
 
@@ -192,7 +242,7 @@ class FlowBot(BaseAgent):
 		:return: the time it took to 1: update the qvs and 2: train the net
 		"""
 		# update the q_values in the replay memory
-		mem_up_time = self.replay_memory.update_q_values()
+		mem_up_time = self.replay_memory.update_q_values(sarsa=True)
 
 		# decrease epsilon
 		self.epsilon = round(self.epsilon - EPSILON_DECAY, 5)
@@ -202,7 +252,7 @@ class FlowBot(BaseAgent):
 		# todo vary learning rate
 		# train the net
 		train_start = time()
-		self.net.train(self.replay_memory, batch_size=512, n_epochs=4, save=SAVE_NET)
+		self.net.train(self.replay_memory.get_training_set(), batch_size=512, n_epochs=4, save=SAVE_NET)
 		train_end = time()
 
 		self.run_info.episode(mem_up_time, train_end - train_start, verbose=EPISODE_INFO)
@@ -238,19 +288,105 @@ class FlowBot(BaseAgent):
 			self.net.save()
 		self.net.close()
 		if SAVE_DATA:
+			self.save(info_files=True)
+
+			for _, _, files in os.walk(TEMP_DIR):
+				for file in files:
+					with open(TEMP_DIR + file, "w") as tmp:
+						tmp.write("")
+
+	def save(self, info_files=False):
+		run_indexer = ConfigParser()
+		with open(LOG_DIR + "run_index.cfg", "r+") as ri_file:
+			run_indexer.read_file(ri_file)
+			run_indexer[NET_NAME] = {
+				"end_conditions": str(END_CONDITIONS).replace("[", "").replace("]", ""),
+				"bot_type": BOT_TYPE,
+				"reward": str(REWARDS).replace("[", "").replace("]", ""),
+				"n_episodes": self.run_info.episode_count,
+				"epsilon": self.epsilon,
+				"description": "- auto generated description -"
+			}
+
+			run_indexer.write(ri_file)
+
+		if info_files:
+			# copy the temp-files into logs folder
+			os.makedirs(LOG_DIR + NET_NAME)
 			for _, _, files in os.walk(TEMP_DIR):
 				for file in files:
 					with open(TEMP_DIR + file, "r") as src, open(LOG_DIR + NET_NAME + "/" + file, "w") as dest:
 						dest.write(src.read())
-					with open(TEMP_DIR + file, "w") as tmp:
-						tmp.write("")
+
+	def load(self, bot_name=LOAD_BOT_NAME, preserve=True):
+		# read bot information from file
+		run_indexer = ConfigParser()
+		with open(LOG_DIR + "run_index.cfg", "r+") as ri_file:
+			run_indexer.read_file(ri_file)
+			net_info = run_indexer[bot_name]
+
+		# determine the name for the bot
+		if preserve:
+			new_name = name_increment(bot_name)
+			while os.path.isdir(LOG_DIR + new_name):
+				new_name = name_increment(new_name)
+		else:
+			new_name = bot_name
+
+		# reset attributes which may be set incorrectly in constructor
+		self.action_states = gi.get_action_states(net_info["bot_type"])		
+		self.episode_end_condition = EpisodeEndCondition(form_end_conditions(net_info["end_conditions"]))
+		self.epsilon = float(net_info["epsilon"])
+		self.replay_memory = ReplayMemory(n_actions=len(self.action_states))
+
+		self.net = NeuralNetwork.restore(bot_name, NET_PATH, new_name=new_name, verbose=True)
+		self.run_info.restore(bot_name)
+
+		# copy information files from log into active (temp) folder
+		for _, _, files in os.walk(LOG_DIR + bot_name):
+			for file in files:
+				with open(LOG_DIR + file, "r") as src, open(TEMP_DIR + file, "w") as dest:
+					dest.write(src.read())
 
 	def __str__(self):
 		return "FBv2_" + NET_NAME + "(" + str(self.index) + ") " + ("blue" if self.team == 0 else "orange")
 
 
+def name_increment(net_name):
+	"""
+	produces a new net name by incrementing its sub id character
+	e.g.:
+		- FlowBot15313548 becomes FlowBot15313548/a
+		- FlowBot15313548/a becomes FlowBot15313548/b
+		- etc.
+	:param net_name: the old name
+	:return: the new name
+	"""
+	new_name = net_name.split("/")
+	if len(new_name) == 1:
+		new_name = new_name[0]
+	elif len(new_name) == 2:
+		new_name = new_name[0] + "/" + chr(ord(new_name[1]) + 1)
+	else:
+		raise ValueError("invalid net name")
+	return new_name
+
+
+def form_end_conditions(condition_string):
+	conditions = condition_string.split(", ")
+	try:
+		conditions[0] = int(conditions[0])
+	except TypeError:
+		conditions[0] = None
+	for i in range(1, len(conditions)):
+		conditions[i] = bool(conditions[i])
+
+
 class EpisodeEndCondition:
-	def __init__(self, fixed_length=None, goal=False, game_end=False, landed=False):
+	def __init__(self, fixed_length=EC_FIXED_LENGTH, goal=EC_GOAL, game_end=EC_GAME_END, landed=EC_LANDED):
+		if fixed_length is None and not goal and not game_end and not landed:
+			raise ValueError("Unfulfillable end condition")
+
 		self.fl = fixed_length
 		self.gs = goal
 		self.ge = game_end
@@ -265,8 +401,9 @@ class EpisodeEndCondition:
 		self.was_met_ge = False
 		self.was_met_la = False
 
-	def is_met(self, state, player_id=0):
-		self.iteration_count += 1
+	def is_met(self, state, player_id=0, remember=True):
+		if remember:
+			self.iteration_count += 1
 		is_on_ground = state.get_player(player_id).is_on_ground
 
 		fl_reached = self.fl is not None and self.iteration_count >= self.fl
@@ -274,16 +411,17 @@ class EpisodeEndCondition:
 		game_ended = self.ge and state.is_match_ended
 		has_landed = self.la and not self.was_on_ground and is_on_ground
 
-		self.was_round_active = state.is_round_active
-		self.was_on_ground = is_on_ground
+		if remember:
+			self.was_round_active = state.is_round_active
+			self.was_on_ground = is_on_ground
 
-		self.was_met_fl = fl_reached
-		self.was_met_gs = goal_scored
-		self.was_met_ge = game_ended
-		self.was_met_la = has_landed
+			self.was_met_fl = fl_reached
+			self.was_met_gs = goal_scored
+			self.was_met_ge = game_ended
+			self.was_met_la = has_landed
 
 		is_met = fl_reached or goal_scored or game_ended or has_landed
-		if is_met:
+		if is_met and remember:
 			self.iteration_count = 0
 
 		return is_met

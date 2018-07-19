@@ -1,0 +1,21 @@
+ff; Format: [29, 100, 9]; Number of Epochs: 5; Batch Size: 4000; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 9sec::::ff;29:100:9;5;4000;0.1;0.0;9
+rec; Format: [29, 100, 9]; Number of Epochs: 5; Batch Size: 4000; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 102sec::::rec;29:100:9;5;4000;0.1;0.0;102
+rec; Format: [29, 100, 9]; Number of Epochs: 5; Batch Size: 4000; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 103sec::::rec;29:100:9;5;4000;0.1;0.0;103
+ff; Format: [29, 100, 9]; Number of Epochs: 5; Batch Size: 4000; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 6sec::::ff;29:100:9;5;4000;0.1;0.0;6
+ff; Format: [29, 200, 9]; Number of Epochs: 5; Batch Size: 4000; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 8sec::::ff;29:200:9;5;4000;0.1;0.0;8
+rec; Format: [29, 200, 9]; Number of Epochs: 5; Batch Size: 4000; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 274sec::::rec;29:200:9;5;4000;0.1;0.0;274
+rec; Format: [29, 512, 9]; Number of Epochs: 5; Batch Size: 2048; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 828sec::::rec;29:512:9;5;2048;0.1;0.0;828
+ff; Format: [29, 512, 512, 512, 9]; Number of Epochs: 5; Batch Size: 4000; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 10sec::::ff;29:512:512:512:9;5;4000;0.1;0.0;10
+ff; Format: [29, 128, 128, 9]; Number of Epochs: 5; Batch Size: 4000; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 3sec::::ff;29:128:128:9;5;4000;0.1;0.0;3
+ff; Format: [29, 128, 128, 9]; Number of Epochs: 5; Batch Size: 4000; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 3sec::::ff;29:128:128:9;5;4000;0.1;0.0;3
+ff; Format: [29, 128, 128, 128, 9]; Number of Epochs: 5; Batch Size: 4000; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 3sec::::ff;29:128:128:128:9;5;4000;0.1;0.0;3
+ff; Format: [29, 128, 128, 128, 9]; Number of Epochs: 20; Batch Size: 4000; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 14sec::::ff;29:128:128:128:9;20;4000;0.1;0.0;14
+ff; Format: [29, 512, 9]; Number of Epochs: 20; Batch Size: 4000; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 17sec::::ff;29:512:9;20;4000;0.1;0.0;17
+ff; Format: [29, 512, 9]; Number of Epochs: 5; Batch Size: 4000; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 4sec::::ff;29:512:9;5;4000;0.1;0.0;4
+ff; Format: [29, 512, 9]; Number of Epochs: 5; Batch Size: 4000; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 4sec::::ff;29:512:9;5;4000;0.1;0.0;4
+ff; Format: [29, 512, 9]; Number of Epochs: 5; Batch Size: 4000; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 4sec::::ff;29:512:9;5;4000;0.1;0.0;4
+ff; Format: [29, 512, 9]; Number of Epochs: 5; Batch Size: 4000; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 4sec::::ff;29:512:9;5;4000;0.1;0.0;4
+ff; Format: [29, 512, 9]; Number of Epochs: 5; Batch Size: 4000; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 3sec::::ff;29:512:9;5;4000;0.1;0.0;3
+ff; Format: [29, 512, 9]; Number of Epochs: 5; Batch Size: 4000; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 6sec::::ff;29:512:9;5;4000;0.1;0.0;6
+ff; Format: [29, 512, 9]; Number of Epochs: 5; Batch Size: 4000; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 11sec::::ff;29:512:9;5;4000;0.1;0.0;11
+ff; Format: [29, 512, 9]; Number of Epochs: 5; Batch Size: 4000; Learning Rate: 0.1; Accuracy: 0.0%; Training time: 15sec::::ff;29:512:9;5;4000;0.1;0.0;15

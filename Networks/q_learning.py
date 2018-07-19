@@ -124,25 +124,29 @@ class NeuralNetwork:
 	def run(self, states):
 		return self.session.run(self.output, feed_dict={self.x: states})[0]		# todo remove [0] when more than one operation is run
 
-	def train(self, replay_memory, batch_size, n_epochs, learning_rate=0.01, save=True):
+	def train(self, trainining_data, batch_size, n_epochs, learning_rate=1e-3, save=True):
 		steps = 0
 		start_time = time()
 
-		# todo replay memory may return less than batch_size elements when ist does not contain enough -> adjust training length
-		n_batches = replay_memory.size / batch_size
-		n_batches *= n_epochs
-		n_batches = int(n_batches) + 1
-		for i in range(n_batches):
-			states_batch, q_values_batch = replay_memory.get_random_batch(batch_size=batch_size)
-			steps += len(states_batch)
+		n_batches = len(trainining_data[0]) / batch_size
+		if int(n_batches) != n_batches:
+			n_batches = int(n_batches) + 1
 
-			feed_dict = {self.x: states_batch,
-						self.q_values_new: q_values_batch,
-						self.learning_rate: learning_rate}
+		for epoch in range(n_epochs):
+			for i in range(n_batches):
+				start = i*batch_size
+				end = (i+1)*batch_size if i < n_batches else -1		# the last batch may not be full size, in this case all remaining elements will be chosen
+				states_batch = trainining_data[0][start:end]
+				q_values_batch = trainining_data[1][start:end]
+				steps += len(states_batch)
 
-			_, summary = self.session.run([self.optimizer, self.merged_summary], feed_dict=feed_dict)
-			# print("adding summary")
-			# self.file_writer.add_summary(summary, global_step=self.get_step_count() + steps)
+				feed_dict = {self.x: states_batch,
+							self.q_values_new: q_values_batch,
+							self.learning_rate: learning_rate}
+
+				_, summary = self.session.run([self.optimizer, self.merged_summary], feed_dict=feed_dict)
+				# print("adding summary")
+				# self.file_writer.add_summary(summary, global_step=self.get_step_count() + steps)
 
 		self.net_config["Stats"]["total_steps"] = str(int(self.net_config["Stats"]["total_steps"]) + steps)
 		self.net_config["Stats"]["total_time"] = str(float(self.net_config["Stats"]["total_time"]) + time() - start_time)
@@ -254,11 +258,14 @@ class ReplayMemory:
 		as the real ones are not known (they depend on future states). ideally this method is called at the end of
 		an episode -> no future states exist/have any influence on the value of current or past states.
 		:param sarsa: whether the sarsa (state action reward state action) variant of q-value updates should be used
-						the sarsa-variant uses the q-value of the selected next action instead of the highest q-value
+						the sarsa-variant uses the q-value of the selected next action instead of the highest q-value next action
 		:return:
 		"""
 		if self.size < 1:
 			return -1
+
+		# save a copy of the predicted values for analysis
+		self.predicted_q_values = self.q_values[:]
 
 		start_time = time()
 		self.estimation_errors = np.zeros(shape=[self.size])
@@ -307,6 +314,18 @@ class ReplayMemory:
 
 		return states_batch, q_values_batch
 
+	def get_training_set(self, shuffle=False):
+		if shuffle:
+			ordering = [i for i in range(self.size)]
+			np.random.shuffle(ordering)
+			states = [self.states[i] for i in ordering]
+			q_values = [self.q_values[i] for i in ordering]
+		else:
+			states = self.states
+			q_values = self.q_values
+
+		return states, q_values
+
 	def clear(self):
 		"""
 		deletes all values from memory. only the number of actions and the discount factor are conserved
@@ -324,11 +343,12 @@ class ReplayMemory:
 		np.savetxt(TEMP_DIR + "estimation_errors.csv", self.estimation_errors, delimiter=",")
 		# np.savetxt(TEMP_DIR + "rewards.csv", self.rewards, delimiter=",")		# replaced with lines 187-189
 		np.savetxt(TEMP_DIR + "q_values.csv", self.q_values, delimiter=",")
+		np.savetxt(TEMP_DIR + "pred_q_values.csv", self.predicted_q_values, delimiter=",")
 
 		with open(TEMP_DIR + "rewards.csv", "a") as rewards_file:
 			if len(self.rewards) > 0:
-				avrg_reward = sum(self.rewards) / len(self.rewards)
-				rewards_file.write(str(avrg_reward) + "\n")
+				# avrg_reward = sum(self.rewards) / len(self.rewards)
+				rewards_file.write(str(sum(self.rewards)) + "\n")
 			else:
 				print("No rewards to be written")
 

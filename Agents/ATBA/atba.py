@@ -4,7 +4,7 @@ from rlbot.agents.base_agent import BaseAgent, SimpleControllerState
 from rlbot.utils.structures.game_data_struct import GameTickPacket
 
 
-class PythonExample(BaseAgent):
+class ATBAgent(BaseAgent):
 
     def initialize_agent(self):
         #This runs once before the bot starts up

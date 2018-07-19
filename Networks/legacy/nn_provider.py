@@ -9,15 +9,15 @@ from time import time
 
 # --------------------Constants--------------------
 # naming/paths
-SAVE_PATH = "./saved/"
+SAVE_PATH = "./saved_sessions/"
 SESSION_NAME = "default"
-LOGFILE = "../util/log.txt"
-TENSORBOARD_LOG_DIR = "./Tensorboard_Log/"
+LOGFILE = "./tb_log.txt"
+LOG_DIR = "E:/Studium/5. Semester/Rocket League Bot/RLBot_v3/RLBot/tb_log/"
 
 # nn-format/learning-vars
 BATCH_SIZE = 2000  # number of features in a set
 N_EPOCHS = 5  # one epoch contains every feature in mnist.train
-LEARNING_RATE = 1e-3  # size of change the optimizer makes to the variables
+LEARNING_RATE = 0.1  # size of change the optimizer makes to the variables
 
 # CapsNet
 DEFAULT_REPETITIONS = 3
@@ -28,7 +28,7 @@ VERBOSE = True
 
 
 class NeuralNetwork:
-	def __init__(self, n_input, n_output, net_id, do_act_summaries=False, save_path=SAVE_PATH, log_dir=TENSORBOARD_LOG_DIR, gpu_enable=True, input_summary=None):
+	def __init__(self, n_input, n_output, net_id, do_act_summaries=False, save_path=SAVE_PATH, log_dir=LOG_DIR, gpu_enable=True, input_summary=None):
 		# !WARNING: creating an instance of this class will automatically corrupt every existing instance
 		tf.reset_default_graph()
 
@@ -98,7 +98,7 @@ class NeuralNetwork:
 		try:
 			log_dir = config["Options"]["log_dir"]
 		except KeyError:
-			log_dir = TENSORBOARD_LOG_DIR
+			log_dir = LOG_DIR
 
 		net = NeuralNetwork(int(config["Format"]["n_input"]), int(config["Format"]["n_output"]), net_name, do_act_summaries=bool(config["Options"]["do_act_summaries"]), save_path=save_dir, log_dir=log_dir, input_summary=int_list_from_string(config["Options"]["in_summary"]), gpu_enable=bool(config["Options"]["gpu_enable"]))
 		for l_index in range(int(config["Format"]["n_layers"])):

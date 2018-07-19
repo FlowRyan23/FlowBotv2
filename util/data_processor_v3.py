@@ -1,255 +1,5 @@
-import numpy as np
-import re
-import util.vector_math as vmath
-import util.game_info as gi
 from Networks.nn_provider import NeuralNetwork
-from util.stats import DistributionInfo
 from rlbot.agents.base_agent import SimpleControllerState
-
-
-def action_counts(in_file, out_file, with_user=False):
-	with open(in_file, "r") as file, open(out_file, "a") as out_file:
-		line = file.readline()
-		while line != "":
-			if re.search("Agent Action Count", line) is not None:
-				out_file.write(line)
-			line = file.readline()
-		out_file.write("\n")
-
-	with open(in_file, "r") as file, open(out_file, "a") as out_file:
-		line = file.readline()
-		while line != "":
-			if re.search("Teacher Action Count", line) is not None:
-				out_file.write(line)
-			line = file.readline()
-		out_file.write("\n")
-
-	if with_user:
-		with open(in_file, "r") as file, open(out_file, "a") as out_file:
-			line = file.readline()
-			while line != "":
-				if re.search("User Action Count", line) is not None:
-					out_file.write(line)
-				line = file.readline()
-			out_file.write("\n")
-
-
-def action_stats(in_file, out_file, with_user=False):
-	with open(in_file, "r") as file, open(out_file, "a") as out_file:
-		line = file.readline()
-		while line != "":
-			if re.search("Agent Output Statistic", line) is not None:
-				out_file.write(line)
-			line = file.readline()
-		out_file.write("\n")
-
-	with open(in_file, "r") as file, open(out_file, "a") as out_file:
-		line = file.readline()
-		while line != "":
-			if re.search("Teacher Output Statistic", line) is not None:
-				out_file.write(line)
-			line = file.readline()
-		out_file.write("\n")
-
-	if with_user:
-		with open(in_file, "r") as file, open(out_file, "a") as out_file:
-			line = file.readline()
-			while line != "":
-				if re.search("User Output Statistic", line) is not None:
-					out_file.write(line)
-				line = file.readline()
-			out_file.write("\n")
-
-
-def fitness(in_file, out_file):
-	with open(in_file, "r") as file, open(out_file, "a") as out_file:
-		line = file.readline()
-		while line != "":
-			if re.search("Average Fitness", line) is not None:
-				out_file.write(line)
-			line = file.readline()
-		out_file.write("\n")
-
-
-def training_data_stat(in_file, out_file):
-	with open(in_file, "r") as file, open(out_file, "a") as out_file:
-		line = file.readline()
-		while line != "":
-			if re.search("Output Statistic:", line) is not None:
-				out_file.write(line)
-			line = file.readline()
-		out_file.write("\n")
-
-
-def population(in_file, out_file):
-	with open(in_file, "r") as file, open(out_file, "a") as out_file:
-		line = file.readline()
-		while line != "":
-			if re.search("Killed", line) is not None:
-				out_file.write(line)
-			line = file.readline()
-		out_file.write("\n")
-
-	with open(in_file, "r") as file, open(out_file, "a") as out_file:
-		line = file.readline()
-		while line != "":
-			if re.search("Survivors:", line) is not None:
-				out_file.write(line)
-			line = file.readline()
-		out_file.write("\n")
-
-
-def convert_v2_to_v3(v2_features):
-	v3_features = []
-	count = 0
-
-	for feature in v2_features:
-		game_data = feature[0]
-		controller_data = feature[1]
-
-		# game data conversion
-		ball_info = game_data[0:9]
-		self_info = game_data[15:24]
-		self_info.append(game_data[27])		# boost
-		opp_info = game_data[28:37]
-		opp_info.append(game_data[40])		# boost
-
-		game_data_v3 = ball_info + self_info + opp_info
-
-		# controller data conversion
-		left = right = 0
-		if controller_data[0] < 0:
-			left = 1
-		elif controller_data[0] != 128:
-			right = 1
-
-		up = down = 0
-		if controller_data[0] < 0:
-			down = 1
-		elif controller_data[0] != 128:
-			up = 1
-
-		acc = 0
-		if controller_data[4] > 10:
-			acc = 1
-
-		decc = 0
-		if controller_data[5] > 10:
-			decc = 1
-
-		boost = 0
-		if controller_data[8] > 0:
-			boost = 1
-
-		jump = 0
-		if controller_data[9] > 0:
-			jump = 1
-
-		slide = 0
-		if controller_data[12] > 0:
-			slide = 1
-
-		controller_data_v3 = [left, right, up, down, acc, decc, jump, boost, slide]
-
-		v3_features.append([game_data_v3, controller_data_v3])
-		count += 1
-
-	return v3_features, count
-
-
-# requires the file at 'path' to in post processing format
-def read_all_v2(path):
-	features = []
-	with open(path, 'r') as data_file:
-		# read initial feature
-		feature = data_file.readline()
-		feature_count = 0
-		while feature != '':
-			feature_count += 1
-			# split the feature string in x and y component
-			x_y_tuple = feature.replace('\n', '').split('::::')
-			x = convert_to_float_list(x_y_tuple[0])
-			y = convert_to_float_list(x_y_tuple[1])
-			if len(x) == 41 and len(y) == 14:
-				features.append([x, y])
-			else:
-				print('read invalid feature at: ', feature_count)
-
-			feature = data_file.readline()
-	return features, feature_count
-
-
-def read_all_v3(path, n_in, n_out):
-	features = []
-	with open(path, 'r') as data_file:
-		# read initial feature
-		feature = data_file.readline()
-		feature_count = 0
-		while feature != '':
-			feature_count += 1
-			# split the feature string in x and y component
-			x_y_tuple = feature.replace('\n', '').split('::::')
-			x = convert_to_float_list(x_y_tuple[0])
-			y = convert_to_float_list(x_y_tuple[1])
-
-			if len(x) == n_in and len(y) == n_out:
-				features.append([x, y])
-			else:
-				print('read invalid feature at: ', feature_count)
-
-			feature = data_file.readline()
-
-	if feature_count <= 0:
-		raise ValueError("no features were found")
-
-	return features, feature_count
-
-
-def write_all(features, dest_path):
-	with open(dest_path, 'a') as file:
-		for feature in features:
-			as_string = convert_to_feature_string(feature)
-			file.write(as_string)
-
-
-def get_feature_stat(features, bot_type=None):
-	output_stat = {}
-	for label in [f[1] for f in features[0:]]:
-		if bot_type is not None:
-			output_string = gi.as_to_str(gi.get_action_states(bot_type)[np.argmax(label)])
-		else:
-			output_string = gi.as_to_str(label)
-
-		try:
-			output_stat[output_string] += 1
-		except KeyError:
-			output_stat[output_string] = 1
-
-	average_input = vmath.Vector(np.zeros([len(features[0][0])]).tolist())
-	for vec_a in [f[0] for f in features[0:]]:
-		average_input = average_input + vmath.Vector(vec_a)
-	average_input = average_input.scalar_mul(1/len(features))
-
-	similarity_info = DistributionInfo([calc_similarity(vec, average_input.values)[0] for vec in [f[0] for f in features[0:]]])
-	angle_info = DistributionInfo([calc_similarity(vec, average_input.values)[1] for vec in [f[0] for f in features[0:]]])
-	length_delta_info = DistributionInfo([calc_similarity(vec, average_input.values)[2] for vec in [f[0] for f in features[0:]]])
-
-	return output_stat, average_input, similarity_info, angle_info, length_delta_info
-
-
-def calc_similarity(a, b):
-	if len(a) != len(b):
-		print("in_sim - unequal length")
-		return 0
-
-	vec_a = vmath.Vector(a)
-	vec_b = vmath.Vector(b)
-
-	angle = vmath.angle(vec_a, vec_b)
-	length_delta = abs(abs(vec_a) - abs(vec_b))
-	similarity = ((180 - angle)/180) * (1/length_delta)
-
-	return similarity, angle, length_delta
 
 
 def nn_to_rlbot_controls(nn_controls):
@@ -462,6 +212,34 @@ def xbox_to_nn_controls(xbox_controls):
 	return [right, left, up, down, acc, decc, jump, boost, slide]
 
 
+def array_to_scs(a):
+	scs = SimpleControllerState()
+
+	scs.throttle = a[0]
+	scs.steer = a[1]
+	scs.pitch = a[2]
+	scs.yaw = a[3]
+	scs.roll = a[4]
+	scs.jump = a[5]
+	scs.boost = a[6]
+	scs.handbrake = a[7]
+
+	return scs
+
+
+def scs_to_array(scs):
+	# format: [throttle:float	(-1.0 ... 1.0)	neg:backwards, pos:forward
+	# 			steer:float		(-1.0 ... 1.0)	neg:left, pos:right
+	# 			pitch			(-1.0 ... 1.0)	neg:down, pos:up
+	# 			yaw				(-1.0 ... 1.0)	neg:left, pos:right
+	# 			roll			(-1.0 ... 1.0)	neg:left, pos:right
+	# 			jump:boolean			TRUE:held
+	# 			boost:boolean			TRUE:held
+	# 			powerslide:boolean		TRUE:held
+	# ]
+	return [scs.throttle, scs.steer, scs.pitch, scs.yaw, scs.roll, scs.jump, scs.boost, scs.handbrake]
+
+
 def convert_to_float_list(string):
 	string_list = string.split()
 	float_list = []
@@ -523,23 +301,3 @@ def catalog_input(src_path):
 			in_str = src_file.readline().rstrip("\n")
 
 	return catalog
-
-
-if __name__ == '__main__':
-	training_data, _ = read_all_v3("../log/training_data.txt", 7, 8)
-
-	print("len td:", len(training_data))
-	print("len tf[0]", len(training_data[0]))
-
-	net = NeuralNetwork(7, 8, "test")
-	net.fully_connected_layer(512)
-	net.activation("relu")
-	net.dropout(0.2)
-	net.fully_connected_layer(512)
-	net.activation("relu")
-	net.commit()
-	net.add_train_setup(learning_rate=0.1)
-
-	net.train(training_data, batch_size=500, do_save=False)
-
-	print("done")

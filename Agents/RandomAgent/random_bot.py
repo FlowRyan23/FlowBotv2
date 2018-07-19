@@ -10,9 +10,9 @@ class RandomAgent(BaseAgent):
 	Is used as a teacher for the Neural Network Agent
 	"""
 
-	def __init__(self, name, team, index, bot_type):
+	def __init__(self, name, team, index, bot_type="no_noop"):
 		super().__init__(name, team, index)
 		self.bot_type = bot_type
 
-	def get_output_vector(self, game_tick_packet):
+	def get_output(self, game_tick_packet):
 		return nn_to_rlbot_controls(gi.get_random_action(bot_type=self.bot_type))
