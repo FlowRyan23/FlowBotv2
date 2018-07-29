@@ -6,7 +6,7 @@ from matplotlib import style
 from time import time
 from util.game_info import as_to_str
 
-PROJECT_ROOT = str(__file__).rstrip("util/information.py")
+PROJECT_ROOT = str(__file__).replace("util\\information.py", "")
 TEMP_DIR = PROJECT_ROOT + "/util/temp/"
 LOG_DIR = PROJECT_ROOT + "util/logs/"
 
@@ -41,7 +41,6 @@ class RunInfo:
 		self.mem_up_times.append(mem_up_time)
 		self.train_times.append(train_time)
 		self.episode_count += 1
-
 
 		if verbose:
 			print("\nEpisode {0:d} over".format(self.episode_count - 1))
@@ -103,14 +102,21 @@ class RunInfo:
 	def restore(self, bot_id):
 		bot_dir = LOG_DIR + bot_id + "/"
 
-		self.user_action_count = np.loadtxt(bot_dir + "user_actions.csv", delimiter=",")
-		self.episode_lengths = np.loadtxt(bot_dir + "episode_lengths.csv", delimiter=",")
-		self.episode_times = np.loadtxt(bot_dir + "episode_times.csv", delimiter=",")
-		self.mem_up_times = np.loadtxt(bot_dir + "mem_up_times.csv", delimiter=",")
-		self.train_times = np.loadtxt(bot_dir + "train_times.csv", delimiter=",")
-		self.net_output = np.loadtxt(bot_dir + "net_output.csv", delimiter=",")
+		self.user_action_count = int(sum(np.loadtxt(bot_dir + "user_actions.csv", delimiter=",")))
+		self.episode_lengths = np.loadtxt(bot_dir + "episode_lengths.csv", delimiter=",").tolist()
+		self.episode_times = np.loadtxt(bot_dir + "episode_times.csv", delimiter=",").tolist()
+		self.mem_up_times = np.loadtxt(bot_dir + "mem_up_times.csv", delimiter=",").tolist()
+		self.train_times = np.loadtxt(bot_dir + "train_times.csv", delimiter=",").tolist()
+		self.net_output = np.loadtxt(bot_dir + "net_output.csv", delimiter=",").tolist()
 		# todo action_stat
 		# todo self.state_score_data
+
+		self.total_time = sum(self.episode_lengths)
+		self.episode_count = len(self.episode_lengths)
+		# todo last ep iter = iteration
+		# todo action stat
+
+		self.state_score_data = {"angle_to_ball": 0, "dist_from_ball": 0, "speed": 0, "boost": 0, "super_sonic": 0}
 
 
 def update_graphs(i):

@@ -6,10 +6,10 @@ from time import time
 from configparser import ConfigParser
 from util.stats import DistributionInfo as Stat
 
-
-TEMP_DIR = "E:/Studium/6. Semester/Bachelorarbeit/Code/RLBotPythonExample/util/temp/"
-LOG_DIR = "E:/Studium/6. Semester/Bachelorarbeit/Code/RLBotPythonExample/util/logs/"
-DEFAULT_SAVE_PATH = "E:/Studium/6. Semester/Bachelorarbeit/Code/RLBotPythonExample/Networks/saved/"
+PROJECT_ROOT = str(__file__).replace("Networks\\q_learning.py", "")
+TEMP_DIR = PROJECT_ROOT + "util/temp/"
+LOG_DIR = PROJECT_ROOT + "util/logs/"
+DEFAULT_SAVE_PATH = PROJECT_ROOT + "Networks/saved/"
 
 
 class NeuralNetwork:

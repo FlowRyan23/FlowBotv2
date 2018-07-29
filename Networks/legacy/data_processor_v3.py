@@ -1,8 +1,8 @@
 import numpy as np
-import math_util.vector_math as vmath
-import bot_util.game_info as gi
-from neural_net.nn_provider import NeuralNetwork
-from math_util.stats import DistributionInfo
+import util.vector_math as vmath
+import util.game_info as gi
+from Networks.legacy.nn_provider import NeuralNetwork
+from util.stats import DistributionInfo
 
 DATA_DIR = '../../../FlowBot Training Data/'
 

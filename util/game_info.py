@@ -1,14 +1,14 @@
 import util.vector_math as vmath
 import random
 
-location_TOLERANCE = 500	# measurement inaccuracy in uu
+location_TOLERANCE = 500		# measurement inaccuracy in uu
 BIG_BOOST_locationS = [
-	[3075, -4100, 0],		# blue back left
-	[-3075, -4100, 0],		# blue back right
-	[-3600, 0, 0],			# mid blue right
-	[3600, 0, 0],			# mid blue left
-	[-3075, 4100, 0],		# orange back left
-	[3075, 4100, 0]			# orange back right
+	[3075, -4100, 0],			# blue back left
+	[-3075, -4100, 0],			# blue back right
+	[-3600, 0, 0],				# mid blue right
+	[3600, 0, 0],				# mid blue left
+	[-3075, 4100, 0],			# orange back left
+	[3075, 4100, 0]				# orange back right
 ]
 BLUE_TEAM = 0
 ORANGE_TEAM = 1
@@ -212,6 +212,9 @@ MAX_VELOCITY = 2300
 GRAVITATION = 650
 CEILING_HEIGHT = 2000
 
+N_BIG_BOOSTS = 6
+N_SMALL_BOOSTS = 28
+
 
 class GameInfo:
 	def __init__(self, game_tick_packet):
@@ -237,26 +240,9 @@ class GameInfo:
 				self.orange_players.append(PlayerInfo(p_info_struct, player_id))
 			player_id += 1
 
-		'''
-		self.big_boosts = []
-		self.boost_pads = []
-		for boost in game_tick_packet.game_boosts:
-			location = vec3_struct_to_class(boost.location)
-			is_big = False
-			for boost_pos in BIG_BOOST_locationS:
-				boost_vec = vmath.Vector3(boost_pos[0], boost_pos[1], boost_pos[2])
-				if vmath.dist(location, boost_vec) < location_TOLERANCE:
-					is_big = True
-					break
-
-			if is_big:
-				self.big_boosts.append(BoostInfo(boost))
-			else:
-				self.boost_pads.append(BoostInfo(boost))
-		'''
 		self.boosts = []
 		for boost in game_tick_packet.game_boosts:
-			self.boosts.append(boost.timer)
+			self.boosts.append(BoostInfo(boost))
 
 	def dist_to_ball(self, player_id=0):
 		player_pos = self.blue_players[player_id].location
@@ -331,58 +317,70 @@ class GameInfo:
 				return player
 		raise KeyError
 
-	def full_state(self, with_logstring=False):
-		# [BallX, -Y, -Z, BallRotX, -Y, -Z, BallVelX, -Y, -Z] entries 0-8 (SelfInfo)
-		# [SelfX, -Y, -Z, SelfRotX, -Y, -Z, SelfVelX, -Y, -Z, Boost] entries 9-18 (PlayerInfo self)
-		# [OppX, -Y, -Z, OppRotX, -Y, -Z, OppVelX, -Y, -Z, Boost] entries 19-28 (PlayerInfo opponent)
-		current_self = [
-			round(self.ball_info.location.x, 2),
-			round(self.ball_info.location.y, 2),
-			round(self.ball_info.location.z, 2),
-			round(self.ball_info.rotation.x, 2),
-			round(self.ball_info.rotation.y, 2),
-			round(self.ball_info.rotation.z, 2),
-			round(self.ball_info.velocity.x, 2),
-			round(self.ball_info.velocity.y, 2),
-			round(self.ball_info.velocity.z, 2),
+	def get_state(self, player_id, state_composition):
+		"""
+		constructs a state (list of float values) that describes the current state of the game
+		:param player_id: the id of the player requesting the state (this player has a specific
+							position in the state)
+		:param state_composition: defines which parts of the game state to include
+		general:
+			round, true_value, false_value, time_played, time_remaining, is_overtime, num_players
+		ball:
+			ball_location, ball_rotation, ball_velocity, ball_angular_velocity,
+			ball_latest_touch, ball_lt_time, ball_lt_normal
+		player:
+			player_player_id, player_location, player_rotation, player_velocity,
+			player_angular_velocity, player_score, player_is_demolished, player_is_on_ground,
+			player_is_super_sonic, player_is_bot, player_jumped, player_double_jumped,
+			player_team, player_boost
+		teammates:
+			mates_enable, mates_player_id, mates_location, mates_rotation, mates_velocity,
+			mates_angular_velocity, mates_score, mates_is_demolished, mates_is_on_ground,
+			mates_is_super_sonic, mates_is_bot, mates_jumped, mates_double_jumped,
+			mates_team, mates_boost
+		opponents:
+			opps_enable, opps_player_id, opps_location, opps_rotation, opps_velocity,
+			opps_angular_velocity, opps_score, opps_is_demolished, opps_is_on_ground,
+			opps_is_super_sonic, opps_is_bot, opps_jumped, opps_double_jumped,
+			opps_team, opps_boost
+		boosts:
+			bboost_enable, bboost_is_active, bboost_timer
+		:return: representation of the current game state
+		"""
 
-			round(self.blue_players[0].location.x, 2),
-			round(self.blue_players[0].location.y, 2),
-			round(self.blue_players[0].location.z, 2),
-			round(self.blue_players[0].rotation.x, 2),
-			round(self.blue_players[0].rotation.y, 2),
-			round(self.blue_players[0].rotation.z, 2),
-			round(self.blue_players[0].velocity.x, 2),
-			round(self.blue_players[0].velocity.y, 2),
-			round(self.blue_players[0].velocity.z, 2),
-			# self.blue_players[0].bOnGround,
-			self.blue_players[0].boost,
-		]
+		state = []
 
-		try:
-			opp_info = [
-				round(self.orange_players[0].location.x, 2),
-				round(self.orange_players[0].location.y, 2),
-				round(self.orange_players[0].location.z, 2),
-				round(self.orange_players[0].rotation.x, 2),
-				round(self.orange_players[0].rotation.y, 2),
-				round(self.orange_players[0].rotation.z, 2),
-				round(self.orange_players[0].velocity.x, 2),
-				round(self.orange_players[0].velocity.x, 2),
-				round(self.orange_players[0].velocity.z, 2),
-				# self.orange_players[0].bOnGround,
-				self.orange_players[0].boost]
-		except IndexError:
-			# no player on orange team
-			opp_info = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+		state += self.ball_info.get_state(state_composition["ball"])
+		state += self.get_player(player_id).get_state(state_composition["player"])
 
-		info = current_self + opp_info
+		if state_composition["mates"]["enable"] == "True":
+			for p in self.blue_players:
+				if p.player_id != player_id:
+					state += p.get_state(state_composition["mates"])
 
-		if with_logstring:
-			logstring = str(current_self).replace('[', '').replace(']', '').replace('\'', '').replace(',', "").replace('\n', '').replace('-0.0', '0').replace('0.0', '0')
-			return info, logstring
-		else:
-			return info
+		if state_composition["opponents"]["enable"] == "True":
+			for p in self.orange_players:
+				state += p.get_state(state_composition["opponents"])
+
+		if state_composition["boosts"]["enable"] == "True":
+			for b in self.boosts:
+				state += b.get_state(give_is_active=state_composition["boosts"]["is_active"] == "True", give_timer=state_composition["boosts"]["timer"] == "True")
+
+		t_val = float(state_composition["general"]["true_value"])
+		f_val = float(state_composition["general"]["false_value"])
+		n_dec = int(state_composition["general"]["round"])
+
+		for i in range(len(state)):
+			if isinstance(state[i], bool):
+				state[i] = t_val if state[i] else f_val
+			elif isinstance(state[i], float):
+				state[i] = round(state[i], n_dec)
+			elif isinstance(state[i], int):
+				state[i] = float(state[i])
+			else:
+				raise ValueError("invalid value type in state")
+
+		return state
 
 
 class PlayerInfo:
@@ -419,6 +417,47 @@ class PlayerInfo:
 
 		return vmath.Vector3(x, y, z)
 
+	def get_state(self, options):
+		"""
+		:param options: id, location, rotation, velocity, angular_velocity,
+			score, is_demolished, is_on_ground, is_super_sonic, is_bot, jumped,
+			double_jumped, team, boost
+		:return: float list representation of this player
+		"""
+
+		state = []
+
+		if options["id"] == "True":
+			state.append(self.player_id)
+		if options["location"] == "True":
+			state += self.location.as_list()
+		if options["rotation"] == "True":
+			state += self.rotation.as_list()
+		if options["velocity"] == "True":
+			state += self.velocity.as_list()
+		if options["angular_velocity"] == "True":
+			state += self.angular_velocity.as_list()
+		if options["score"] == "True":
+			state.append(self.score.score)
+		if options["is_demolished"] == "True":
+			state.append(self.is_demolished)
+		if options["is_on_ground"] == "True":
+			state.append(self.is_on_ground)
+		if options["is_super_sonic"] == "True":
+			state.append(self.is_super_sonic)
+		if options["is_bot"] == "True":
+			state.append(self.is_bot)
+		if options["jumped"] == "True":
+			state.append(self.jumped)
+		if options["double_jumped"] == "True":
+			state.append(self.double_jumped)
+		if options["team"] == "True":
+			state.append(self.team)
+		if options["boost"] == "True":
+			state.append(self.boost)
+
+		return state
+
 
 class BallInfo:
 	def __init__(self, b_info_struct):
@@ -431,12 +470,54 @@ class BallInfo:
 		self.lt_time = float(b_info_struct.latest_touch.time_seconds)
 		self.lt_normal = vec3_struct_to_class(b_info_struct.latest_touch.hit_normal)
 
+	def get_state(self, options):
+		"""
+		:param options: location, rotation, velocity, angular_velocity, latest_touch,
+			lt_time, lt_normal
+		:return: list representation of the ball
+		"""
+
+		state = []
+
+		if options["location"] == "True":
+			state += self.location.as_list()
+		if options["rotation"] == "True":
+			state += self.rotation.as_list()
+		if options["velocity"] == "True":
+			state += self.velocity.as_list()
+		if options["angular_velocity"] == "True":
+			state += self.angular_velocity.as_list()
+		if options["latest_touch"] == "True":
+			state += self.latest_touch.as_list()
+		if options["lt_time"] == "True":
+			state.append(self.lt_time)
+		if options["lt_normal"] == "True":
+			state += self.lt_normal.as_list()
+
+		return state
+
 
 class BoostInfo:
 	def __init__(self, boost_info_struct):
-		self.location = vec3_struct_to_class(boost_info_struct.location)
-		self.bActive = bool(boost_info_struct.bActive)
-		self.timer = int(boost_info_struct.Timer)
+		# self.is_big = is_big
+		# self.location = vec3_struct_to_class(boost_info_struct.location)
+		self.is_active = bool(boost_info_struct.is_active)
+		self.timer = int(boost_info_struct.timer)
+
+	def get_state(self, give_is_active=True, give_timer=True):
+		"""
+		:param give_is_active: whether is_active will be included in the state
+		:param give_timer: whether the timer will be included in the state
+		:return: list representation of this boost pad
+		"""
+		state = []
+
+		if give_is_active:
+			state.append(self.is_active)
+		if give_timer:
+			state.append(self.timer)
+
+		return state
 
 
 class ScoreInfo:
@@ -448,6 +529,87 @@ class ScoreInfo:
 		self.saves = score_info_struct.saves
 		self.shots = score_info_struct.shots
 		self.demolitions = score_info_struct.demolitions
+
+
+def state_size(state_comp, n_opponents=0, n_mates=0):
+	"""
+	calculates how many values will be in a state given a state composition
+	:param state_comp: dictionary specifying which information is contained in the state
+	:param n_opponents: number of opponents in the game
+	:param n_mates: number of teammates in the game
+	:return: size of the state
+	"""
+	size = 0
+
+	general_options = ["time_played", "time_remaining", "is_overtime", "num_players"]
+	general_options = [state_comp["general"][opt] == "True" for opt in general_options]
+	for i in general_options:
+		if i:
+			print("general option L+1")
+			size += 1
+
+	ball_vector_options = ["location", "rotation", "velocity", "angular_velocity", "latest_touch", "lt_normal"]
+	ball_vector_options = [state_comp["ball"][opt] == "True" for opt in ball_vector_options]
+	for i in ball_vector_options:
+		if i:
+			print("ball option L+3")
+			size += 3
+
+	if state_comp["ball"]["lt_time"] == "True":
+		print("ball lt time L+1")
+		size += 1
+
+	size += player_state_size(state_comp["player"])
+	if state_comp["mates"]["enable"] == "True":
+		size += player_state_size(state_comp["mates"])*n_mates
+	if state_comp["opponents"]["enable"] == "True":
+		size += player_state_size(state_comp["opponents"])*n_opponents
+
+	b_size = 0
+	if state_comp["boosts"]["is_active"] == "True":
+		b_size += 1
+	if state_comp["boosts"]["timer"] == "True":
+		b_size += 1
+
+	if state_comp["boosts"]["enable"] == "True":
+		size += b_size * N_BIG_BOOSTS
+
+	return size
+
+
+def player_state_size(p_state):
+	size = 0
+
+	if p_state["id"] == "True":
+		size += 1
+	if p_state["location"] == "True":
+		size += 3
+	if p_state["rotation"] == "True":
+		size += 3
+	if p_state["velocity"] == "True":
+		size += 3
+	if p_state["angular_velocity"] == "True":
+		size += 3
+	if p_state["score"] == "True":
+		size += 1
+	if p_state["is_demolished"] == "True":
+		size += 1
+	if p_state["is_on_ground"] == "True":
+		size += 1
+	if p_state["is_super_sonic"] == "True":
+		size += 1
+	if p_state["is_bot"] == "True":
+		size += 1
+	if p_state["jumped"] == "True":
+		size += 1
+	if p_state["double_jumped"] == "True":
+		size += 1
+	if p_state["team"] == "True":
+		size += 1
+	if p_state["boost"] == "True":
+		size += 1
+
+	return size
 
 
 def vec3_struct_to_class(vec3):
@@ -529,6 +691,4 @@ def print_action_states(bot_type):
 
 
 if __name__ == '__main__':
-	p = get_action_percentages("all")
-	for key in p:
-		print(str(round(p[key]*100, 2)).replace(".", ",") + "%")
+	pass
