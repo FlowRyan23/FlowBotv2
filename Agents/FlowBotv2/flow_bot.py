@@ -36,11 +36,11 @@ INFO_INTERVAL = 10.0		# in seconds
 
 # net and training properties
 NET_NAME = "FlowBot" + str(int(time()))
-BOT_TYPE = "no_noop"
+BOT_TYPE = "no_flip"
 INPUT_COMPOSITION_FILE = PROJECT_ROOT + "Agents/FlowBotv2/state_composition.cfg"
 N_OUTPUT = len(gi.get_action_states(BOT_TYPE))
 START_EPSILON = 0.9						# chance that a random action will be chosen instead of the one with highest q_value
-EPSILON_DECAY = 1e-3					# amount the epsilon value decreases every episode
+EPSILON_DECAY = 5e-4					# amount the epsilon value decreases every episode
 MIN_EPSILON = 0.1						# minimum epsilon value
 USE_SARSA = False
 
@@ -52,8 +52,8 @@ EC_LANDED = True
 END_CONDITIONS = [EC_FIXED_LENGTH, EC_GOAL, EC_GAME_END, EC_LANDED]
 
 # rewards
-RE_HEIGHT = False						# car.z / ceiling_height
-RE_AIRTIME = True						# +1 for every iteration where !car.on_ground (given when landed)
+RE_HEIGHT = True						# car.z / ceiling_height
+RE_AIRTIME = False						# +1 for every iteration where !car.on_ground (given when landed)
 RE_BALL_DIST = False					# distance between car and ball
 RE_SS_DIFF = False						# difference between current and previous state score
 RE_FACING_UP = False						# angle between z-axes and car.facing (normalized to 0-1)
@@ -93,6 +93,7 @@ class FlowBot(BaseAgent):
 
 		self.episode_end_condition = EpisodeEndCondition()
 		self.epsilon = START_EPSILON
+		self.epsilon_decay = EPSILON_DECAY
 		self.sarsa = USE_SARSA
 		self.aps = 0						# actions per second
 
@@ -252,7 +253,7 @@ class FlowBot(BaseAgent):
 		mem_up_time = self.replay_memory.update_q_values(sarsa=self.sarsa)
 
 		# decrease epsilon
-		self.epsilon = round(self.epsilon - EPSILON_DECAY, 5)
+		self.epsilon = round(self.epsilon - self.epsilon_decay, 5)
 		if self.epsilon < MIN_EPSILON:
 			self.epsilon = MIN_EPSILON
 
@@ -307,6 +308,7 @@ class FlowBot(BaseAgent):
 			run_indexer[self.name]["reward"] = str(REWARDS).replace("[", "").replace("]", "")
 			run_indexer[self.name]["n_episodes"] = str(self.run_info.episode_count)
 			run_indexer[self.name]["epsilon"] = str(self.epsilon)
+			run_indexer[self.name]["epsilon_decay"] = str(self.epsilon_decay)
 			run_indexer[self.name]["sarsa"] = str(USE_SARSA)
 			run_indexer[self.name]["description"] = "- auto generated description -"
 		except KeyError:
@@ -316,6 +318,7 @@ class FlowBot(BaseAgent):
 				"reward": str(REWARDS).replace("[", "").replace("]", ""),
 				"n_episodes": str(self.run_info.episode_count),
 				"epsilon": str(self.epsilon),
+				"epsilon_decay": str(self.epsilon_decay),
 				"sarsa": str(USE_SARSA),
 				"description": "- auto generated description -"
 			}
@@ -358,6 +361,7 @@ class FlowBot(BaseAgent):
 		self.action_states = gi.get_action_states(net_info["bot_type"])		
 		self.episode_end_condition = EpisodeEndCondition(form_end_conditions(net_info["end_conditions"]))
 		self.epsilon = float(net_info["epsilon"])
+		self.epsilon_decay = float(net_info["epsilon_decay"])
 		self.replay_memory = ReplayMemory(n_actions=len(self.action_states))
 		self.state_comp.read(LOG_DIR + bot_name + "/state_composition.cfg")
 		self.sarsa = bool(net_info["sarsa"])
