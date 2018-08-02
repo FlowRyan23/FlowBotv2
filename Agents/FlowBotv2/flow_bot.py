@@ -228,7 +228,7 @@ class FlowBot(BaseAgent):
 					self.reward_accumulator += 1
 
 		if RE_HEIGHT:
-			reward += car.location.z / gi.CEILING_HEIGHT
+			reward += car.location.z / gi.ARENA_HEIGHT
 
 		if RE_FACING_UP:
 			vertical = Vector3(0, 0, 1)
