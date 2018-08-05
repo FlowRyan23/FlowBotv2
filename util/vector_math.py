@@ -1,5 +1,6 @@
 import math
 import numpy as np
+from scipy.linalg import expm
 
 
 class Vector3:
@@ -43,6 +44,9 @@ class Vector3:
 
 	def __invert__(self):
 		return Vector3(-self.x, -self.y, -self.z)
+
+	def __round__(self, n=None):
+		return Vector3(round(self.x, n), round(self.y, n), round(self.z, n))
 
 	def __str__(self):
 		return "x: " + str(self.x) + ", y: " + str(self.y) + ", z: " + str(self.z)
@@ -160,3 +164,59 @@ def vec_between_points(point_a, point_b):
 	z = point_a.z - point_b.z
 	# returned Vector is the one from b to a
 	return Vector3(x, y, z)
+
+
+def rotate_around_vector(p, axis, angle):
+	"""
+	rotates point p around the axis by the given angle
+	:param p: Vector3 (or list of 3 floats) describing a point in 3d space
+	:param axis: Vector3 (or list of 3 floats) describing the axis of rotation
+	:param angle: the angle by which p will be rotated around the axis (in radians)
+	:return: the new position of p
+	"""
+
+	if not isinstance(p, Vector3):
+		p = Vector3(p[0], p[1], p[2])
+	if not isinstance(axis, Vector3):
+		axis = Vector3(axis[0], axis[1], axis[2])
+
+	c = math.cos(angle)
+	s = math.sin(angle)
+
+	r_matrix = [
+		[c + axis.x * (1 - c), axis.x * axis.y * (1 - c) - axis.z * s, axis.x * axis.z * (1 - c) + axis.y * s],
+		[axis.x * axis.y * (1 - c) + axis.z * s, c + axis.y * axis.y * (1 - c), axis.y * axis.z * (1 - c) - axis.x * s],
+		[axis.x * axis.z * (1 - c) - axis.y * s, axis.y * axis.z * (1 - c) + axis.x * s, c + axis.z * axis.z * (1 - c)]
+	]
+
+	return np.matmul(r_matrix, p.as_list())
+
+
+def convert_to_basis(p, basis):
+	"""
+	:param p: a point in standard coordinates
+	:param basis: three Vector3s representing the three basis vectors for the new basis
+	:return: point p in relative coordinates to the basis
+	"""
+	conversion_matrix = [
+		basis[0].as_list(),
+		basis[1].as_list(),
+		basis[2].as_list(),
+	]
+
+	conversion_matrix = np.invert(conversion_matrix)
+	return np.matmul(conversion_matrix, p.as_list())
+
+
+def rot_euler(v, xyz):
+	"""
+	Rotate vector v (or array of vectors) by the euler angles xyz
+	https://stackoverflow.com/questions/6802577/python-rotation-of-3d-vector
+	:param v:
+	:param xyz: euler angels; tuple of length 3
+	:return:
+	"""
+
+	for theta, axis in zip(xyz, np.eye(3)):
+		v = np.dot(np.array(v), expm(np.cross(np.eye(3), axis * -theta)))
+	return v

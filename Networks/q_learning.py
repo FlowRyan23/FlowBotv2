@@ -165,7 +165,7 @@ class NeuralNetwork:
 		self.saver.restore(self.session, save_path=ckp_file)
 
 	@staticmethod
-	def restore(name, path, new_name=None, verbose=False):
+	def restore(name, path=DEFAULT_SAVE_PATH, new_name=None, verbose=False):
 		if verbose:
 			print("restoring {0:s} from {1:s}".format(name, path))
 			print("config file:", path + name + "/net.cfg")
@@ -180,7 +180,8 @@ class NeuralNetwork:
 		net = NeuralNetwork(name_, input_shape, n_classes, save_path=path)
 
 		n_layers = int(config["Format"]["n_layers"])
-		print("N_Layers:", n_layers)
+		if verbose:
+			print("N_Layers:", n_layers)
 		for i in range(n_layers):
 			l_type = config["Layer" + str(i)]["type"]
 			if l_type == "fc":

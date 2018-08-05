@@ -1,5 +1,8 @@
 import util.vector_math as vmath
+from util.vector_math import Vector3
 import random
+import math
+import numpy as np
 
 location_TOLERANCE = 500		# measurement inaccuracy in uu
 BIG_BOOST_locationS = [
@@ -56,6 +59,16 @@ ALL_ACTION_STATES = [
 	[0, 0, 0, 1, 1, 0, 0, 0, 0],		# added acc
 	[1, 0, 0, 0, 0, 0, 0, 0, 1],
 	[0, 1, 0, 0, 0, 0, 0, 0, 1]
+]
+
+ACTION_DESCRIPTIONS = [
+	"no_op", "turn_right", "turn_back_right", "turn_right_boost",
+	"turn_right_slide",	"turn_back_right_slide", "turn_left", "turn_back_left",
+	"turn_left_boost", "turn_left_slide", "turn_back_left_slide", "flip_up_right",
+	"flip_up_left",	"flip_right", "flip_left", "flip_down_right", "flip_down_left",
+	"flip_up", "flip_down", "jump", "drive", "drive_boost", "drive_back", "boost",
+	"boost_right", "boost_left", "boost_up", "boost_down", "boost_roll_right",
+	"boost_roll_left", "right", "left", "up", "down", "roll_right", "roll_left"
 ]
 
 BOT_ACTION_STATES = {
@@ -260,7 +273,7 @@ class GameInfo:
 		return dist, flat_dist, height_dist
 
 	def angle_to_ball(self, player_id=0):
-		player_pos = self.blue_players[player_id].location
+		player_pos = self.get_player(player_id).location
 		ball_pos = self.ball_info.location
 
 		facing = self.blue_players[player_id].get_facing()
@@ -312,6 +325,17 @@ class GameInfo:
 		'''
 		
 		return self
+
+	def get_relative(self, player_id):
+		player = self.get_player(player_id)
+		basis = player.get_basis()
+
+		rel = self.clone()
+		rel.ball_info = rel.ball_info.get_relative(basis)
+		rel.blue_players = [p.get_relative(basis) for p in rel.blue_players]
+		rel.orange_players = [p.get_relative(basis) for p in rel.orange_players]
+
+		return rel
 
 	def get_all_players(self):
 		return self.blue_players + self.orange_players
@@ -387,9 +411,14 @@ class GameInfo:
 
 		return state
 
+	def clone(self):
+		return GameInfo(self.game_tick_packet)
+
 
 class PlayerInfo:
 	def __init__(self, p_info_struct, player_id):
+		self.struct = p_info_struct
+
 		self.player_id = player_id
 		self.location = vec3_struct_to_class(p_info_struct.physics.location)
 		self.rotation = rot3_struct_to_class(p_info_struct.physics.rotation)
@@ -421,6 +450,34 @@ class PlayerInfo:
 		z = self.rotation.x/float(MAX_VAL/2)
 
 		return vmath.Vector3(x, y, z)
+
+	def get_basis(self):
+		"""
+		:return: the basis vectors that span the relative coordinate space of the players car
+			x: the direction the car is facing
+			y: the direction perpendicular to the cars ceiling
+			z: the direction perpendicular to x and y (to the right of the car)
+		"""
+		pitch = self.rotation.x * 2		# pitch only ranges from -pi to pi
+		yaw = self.rotation.y
+		roll = self.rotation.z
+
+		n_y = Vector3(-math.sin(yaw), math.cos(yaw), 0)
+		n_t = Vector3(math.cos(yaw), math.sin(yaw), 0)
+
+		x = vmath.rotate_around_vector(n_t, axis=n_y, angle=pitch)
+		y = vmath.rotate_around_vector(n_y, axis=x, angle=roll)
+		z = np.cross(x, y)
+
+		return x, y, z
+
+	# todo rotation, angular_velocity
+	def get_relative(self, basis):
+		rel = self.clone()
+		rel.location = vmath.convert_to_basis(rel.location, basis)
+		rel.velocity = vmath.convert_to_basis(rel.velocity, basis)
+
+		return rel
 
 	def get_state(self, options):
 		"""
@@ -463,9 +520,14 @@ class PlayerInfo:
 
 		return state
 
+	def clone(self):
+		return PlayerInfo(self.struct, self.player_id)
+
 
 class BallInfo:
 	def __init__(self, b_info_struct):
+		self.struct = b_info_struct
+
 		self.location = vec3_struct_to_class(b_info_struct.physics.location)
 		self.rotation = rot3_struct_to_class(b_info_struct.physics.rotation)
 		self.velocity = vec3_struct_to_class(b_info_struct.physics.velocity)
@@ -501,9 +563,21 @@ class BallInfo:
 
 		return state
 
+	# todo rotation, angular_velocity
+	def get_relative(self, basis):
+		rel = self.clone()
+		rel.location = vmath.convert_to_basis(rel.location, basis)
+		rel.velocity = vmath.convert_to_basis(rel.velocity, basis)
+
+		return rel
+
+	def clone(self):
+		return BallInfo(self.struct)
+
 
 class BoostInfo:
 	def __init__(self, boost_info_struct):
+		self.struct = boost_info_struct
 		# self.is_big = is_big
 		# self.location = vec3_struct_to_class(boost_info_struct.location)
 		self.is_active = bool(boost_info_struct.is_active)
@@ -524,9 +598,14 @@ class BoostInfo:
 
 		return state
 
+	def clone(self):
+		return BoostInfo(self.struct)
+
 
 class ScoreInfo:
 	def __init__(self, score_info_struct):
+		self.struct = score_info_struct
+
 		self.score = score_info_struct.score
 		self.goals = score_info_struct.goals
 		self.own_goals = score_info_struct.own_goals
@@ -534,6 +613,9 @@ class ScoreInfo:
 		self.saves = score_info_struct.saves
 		self.shots = score_info_struct.shots
 		self.demolitions = score_info_struct.demolitions
+
+	def clone(self):
+		return ScoreInfo(self.struct)
 
 
 def state_size(state_comp, n_opponents=0, n_mates=0):

@@ -21,7 +21,7 @@ COLLECT_DATA = True
 SAVE_DATA = COLLECT_DATA and True
 LOAD = False
 PRESERVE = True
-LOAD_BOT_NAME = "no load bot name given"
+LOAD_BOT_NAME = "no name"
 PROJECT_ROOT = str(__file__).replace("Agents\\FlowBotv2\\flow_bot.py", "")
 NET_PATH = PROJECT_ROOT + "Networks/saved/"
 TEMP_DIR = PROJECT_ROOT + "util/temp/"
@@ -43,12 +43,13 @@ START_EPSILON = 0.9						# chance that a random action will be chosen instead of
 EPSILON_DECAY = 5e-4					# amount the epsilon value decreases every episode
 MIN_EPSILON = 0.1						# minimum epsilon value
 USE_SARSA = False
+RELATIVE_COORDINATES = False
 
 # end conditions
-EC_FIXED_LENGTH = None
+EC_FIXED_LENGTH = 5000
 EC_GOAL = False
 EC_GAME_END = False
-EC_LANDED = True
+EC_LANDED = False
 END_CONDITIONS = [EC_FIXED_LENGTH, EC_GOAL, EC_GAME_END, EC_LANDED]
 
 # rewards
@@ -56,7 +57,7 @@ RE_HEIGHT = True						# car.z / ceiling_height
 RE_AIRTIME = False						# +1 for every iteration where !car.on_ground (given when landed)
 RE_BALL_DIST = False					# distance between car and ball
 RE_SS_DIFF = False						# difference between current and previous state score
-RE_FACING_UP = False						# angle between z-axes and car.facing (normalized to 0-1)
+RE_FACING_UP = False					# angle between z-axes and car.facing (normalized to 0-1)
 RE_FACING_OPP = False					# angle between y-axes and car.facing (normalized to 0-1)
 REWARDS = [RE_HEIGHT, RE_AIRTIME, RE_BALL_DIST, RE_SS_DIFF, RE_FACING_UP, RE_FACING_OPP]
 
@@ -95,6 +96,7 @@ class FlowBot(BaseAgent):
 		self.epsilon = START_EPSILON
 		self.epsilon_decay = EPSILON_DECAY
 		self.sarsa = USE_SARSA
+		self.rel_coords = RELATIVE_COORDINATES
 		self.aps = 0						# actions per second
 
 		# list of tuples of (state, action, reward);
@@ -112,9 +114,9 @@ class FlowBot(BaseAgent):
 			self.load(preserve=PRESERVE)
 		else:
 			self.net = NeuralNetwork(NET_NAME, [state_size(self.state_comp)], len(self.action_states))
+			self.net.add_fc(256, activation=ActivationType.RELU)
 			self.net.add_fc(512, activation=ActivationType.RELU)
-			self.net.add_fc(512, activation=ActivationType.RELU)
-			self.net.add_fc(512, activation=ActivationType.RELU)
+			self.net.add_fc(256, activation=ActivationType.RELU)
 			self.net.commit()
 			self.run_info.net = self.net
 
@@ -130,6 +132,9 @@ class FlowBot(BaseAgent):
 		self.aps += 1
 
 		game_info = gi.GameInfo(game_tick_packet)		# the game_tick_packet struct is converted to a GameInfo-Object
+		if self.rel_coords:
+			game_info = game_info.get_relative(self.index)
+
 		if self.team == gi.ORANGE_TEAM:
 			game_info.mirror()
 		state = game_info.get_state(self.index, self.state_comp)		# a list of float values to be fed to the net
@@ -309,7 +314,8 @@ class FlowBot(BaseAgent):
 			run_indexer[self.name]["n_episodes"] = str(self.run_info.episode_count)
 			run_indexer[self.name]["epsilon"] = str(self.epsilon)
 			run_indexer[self.name]["epsilon_decay"] = str(self.epsilon_decay)
-			run_indexer[self.name]["sarsa"] = str(USE_SARSA)
+			run_indexer[self.name]["sarsa"] = str(self.sarsa)
+			run_indexer[self.name]["relative_coordinates"] = str(self.rel_coords)
 			run_indexer[self.name]["description"] = "- auto generated description -"
 		except KeyError:
 			run_indexer[self.name] = {
@@ -319,7 +325,8 @@ class FlowBot(BaseAgent):
 				"n_episodes": str(self.run_info.episode_count),
 				"epsilon": str(self.epsilon),
 				"epsilon_decay": str(self.epsilon_decay),
-				"sarsa": str(USE_SARSA),
+				"sarsa": str(self.sarsa),
+				"relative_coordinates": str(self.rel_coords),
 				"description": "- auto generated description -"
 			}
 
@@ -365,8 +372,9 @@ class FlowBot(BaseAgent):
 		self.replay_memory = ReplayMemory(n_actions=len(self.action_states))
 		self.state_comp.read(LOG_DIR + bot_name + "/state_composition.cfg")
 		self.sarsa = bool(net_info["sarsa"])
+		self.rel_coords = bool(net_info["relative_coordinates"])
 
-		self.net = NeuralNetwork.restore(bot_name, NET_PATH, new_name=new_name, verbose=True)
+		self.net = NeuralNetwork.restore(bot_name, new_name=new_name, verbose=True)
 		self.run_info.restore(bot_name)
 
 		# copy information files from log into active (temp) folder

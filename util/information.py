@@ -231,34 +231,10 @@ def net_plot_helper(axis, vals):
 	axis.hist(vals, x, histtype="bar")
 
 
-def sample_net(net, resolution=0.01):
-	sample = np.zeros([int(gi.ARENA_WIDTH * resolution) + 1, int(gi.ARENA_LENGTH * resolution) + 1, int(gi.ARENA_HEIGHT * resolution) + 1])
-
-	state = np.zeros(int(net.net_config["Format"]["input_shape"]))
-	for x, y, z, s in sample_positions(state, 0, resolution=resolution):
-		sample[x][y][z] = net.run(s)
-
-	return sample
-
-
-def sample_positions(state, pos_start_index, resolution=0.2):
-	for x in range(int(gi.ARENA_WIDTH*resolution) + 1):
-		for y in range(int(gi.ARENA_LENGTH*resolution) + 1):
-			for z in range(int(gi.ARENA_HEIGHT*resolution) + 1):
-				state_ = state[:]
-				scale = 1/resolution
-				state_[pos_start_index] = x * scale
-				state_[pos_start_index + 1] = y * scale
-				state_[pos_start_index + 2] = z * scale
-
-				yield x, y, z, state_
-
-
 if __name__ == "__main__":
 	diagrams = False
 	read_file = False
 	plot_test = False
-	net_sampling = True
 
 	if diagrams:
 		style.use("fivethirtyeight")
@@ -302,9 +278,3 @@ if __name__ == "__main__":
 		averaged_y = stats.average_into(y, 50)
 		plt.plot(x, averaged_y)
 		plt.show()
-
-	if net_sampling:
-		for sample in sample_positions(np.zeros([3]), 0, resolution=0.01):
-			print(sample)
-
-
