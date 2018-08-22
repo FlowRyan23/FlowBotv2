@@ -74,8 +74,10 @@ ACTION_DESCRIPTIONS = [
 BOT_ACTION_STATES = {
 	"grounded_simple": 	[0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 	"grounded": 		[0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	"grounded_2": 		[0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 	"flying":			[0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 	"no_flip":			[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+	"no_jmp_boost":		[0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1],
 	"1%":				[0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
 	"no_noop":			[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 	"all":				[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
@@ -220,9 +222,6 @@ ACTION_PERCENTAGES = {
 	"010100100": 2.167732333078048e-06
 }
 
-MAX_VAL = 32767
-MIN_VAL = -32768
-
 MAX_VELOCITY = 2300
 GRAVITATION = 650
 
@@ -232,6 +231,8 @@ N_SMALL_BOOSTS = 28
 ARENA_WIDTH = 8240
 ARENA_LENGTH = 12000
 ARENA_HEIGHT = 2000
+
+BALL_SIZE = 175
 
 
 class GameInfo:
@@ -276,7 +277,7 @@ class GameInfo:
 		player_pos = self.get_player(player_id).location
 		ball_pos = self.ball_info.location
 
-		facing = self.blue_players[player_id].get_facing()
+		facing = self.blue_players[player_id].get_basis(as_v3=True)[0]
 		player_ball_vec = vmath.vec_between_points(ball_pos, player_pos)
 
 		angle = vmath.angle(facing, player_ball_vec)
@@ -328,12 +329,19 @@ class GameInfo:
 
 	def get_relative(self, player_id):
 		player = self.get_player(player_id)
-		basis = player.get_basis()
+		x, y, z = player.get_basis()
+		basis = np.array([x, y, z]).transpose()
 
 		rel = self.clone()
-		rel.ball_info = rel.ball_info.get_relative(basis)
-		rel.blue_players = [p.get_relative(basis) for p in rel.blue_players]
-		rel.orange_players = [p.get_relative(basis) for p in rel.orange_players]
+		rel.ball_info = rel.ball_info.get_relative(basis, offset=player.location)
+		blue_players = []
+		for p in rel.blue_players:
+			if p.player_id != player_id:
+				blue_players.append(p.get_relative(basis, offset=player.location))
+			else:
+				blue_players.append(p)
+		rel.blue_players = blue_players
+		rel.orange_players = [p.get_relative(basis, offset=player.location) for p in rel.orange_players]
 
 		return rel
 
@@ -435,32 +443,16 @@ class PlayerInfo:
 		self.team = int(p_info_struct.team)
 		self.boost = int(p_info_struct.boost)
 
-	def get_facing(self):
-		x = 1 - 2 * (abs(self.rotation.y) / float(MAX_VAL))
-
-		y = abs(self.rotation.y) / (MAX_VAL / 2)
-		try:
-			sign = self.rotation.y/abs(self.rotation.y)
-		except ZeroDivisionError:
-			sign = 0
-		if abs(self.rotation.y) > MAX_VAL/2:
-			y = 2-y
-		y *= sign
-
-		z = self.rotation.x/float(MAX_VAL/2)
-
-		return vmath.Vector3(x, y, z)
-
-	def get_basis(self):
+	def get_basis(self, as_v3=False):
 		"""
 		:return: the basis vectors that span the relative coordinate space of the players car
 			x: the direction the car is facing
 			y: the direction perpendicular to the cars ceiling
 			z: the direction perpendicular to x and y (to the right of the car)
 		"""
-		pitch = self.rotation.x * 2		# pitch only ranges from -pi to pi
+		pitch = -self.rotation.x
 		yaw = self.rotation.y
-		roll = self.rotation.z
+		roll = -self.rotation.z
 
 		n_y = Vector3(-math.sin(yaw), math.cos(yaw), 0)
 		n_t = Vector3(math.cos(yaw), math.sin(yaw), 0)
@@ -469,13 +461,19 @@ class PlayerInfo:
 		y = vmath.rotate_around_vector(n_y, axis=x, angle=roll)
 		z = np.cross(x, y)
 
+		if as_v3:
+			x = Vector3.from_list(x)
+			y = Vector3.from_list(y)
+			z = Vector3.from_list(z)
 		return x, y, z
 
 	# todo rotation, angular_velocity
-	def get_relative(self, basis):
+	def get_relative(self, basis, offset):
 		rel = self.clone()
-		rel.location = vmath.convert_to_basis(rel.location, basis)
-		rel.velocity = vmath.convert_to_basis(rel.velocity, basis)
+		rel.location -= offset
+		rel.location = Vector3.from_list(vmath.convert_to_basis(rel.location, basis))
+		rel.velocity -= offset
+		rel.velocity = Vector3.from_list(vmath.convert_to_basis(rel.velocity, basis))
 
 		return rel
 
@@ -564,10 +562,12 @@ class BallInfo:
 		return state
 
 	# todo rotation, angular_velocity
-	def get_relative(self, basis):
+	def get_relative(self, basis, offset):
 		rel = self.clone()
-		rel.location = vmath.convert_to_basis(rel.location, basis)
-		rel.velocity = vmath.convert_to_basis(rel.velocity, basis)
+		rel.location -= offset
+		rel.location = Vector3.from_list(vmath.convert_to_basis(rel.location, basis))
+		rel.velocity -= offset
+		rel.velocity = Vector3.from_list(vmath.convert_to_basis(rel.velocity, basis))
 
 		return rel
 

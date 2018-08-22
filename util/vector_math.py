@@ -9,6 +9,10 @@ class Vector3:
 		self.y = y
 		self.z = z
 
+	@staticmethod
+	def from_list(l):
+		return Vector3(l[0], l[1], l[2])
+
 	def invert(self, dims=[True, True, True]):
 		if dims[0]:
 			self.x = -self.x
@@ -60,6 +64,9 @@ class Vector3:
 		z = self.x*other.y - self.y*other.x
 		return Vector3(x, y, z)
 
+	def e_mul(self, other):
+		return Vector3(self.x*other.x, self.y*other.y, self.z*other.z)
+
 	def normalize(self):
 		return self.scalar_mul(1/abs(self))
 
@@ -70,7 +77,7 @@ class Vector:
 		self.size = len(values)
 
 	def as_list(self):
-		return self.values
+		return self.values[:]
 
 	def __add__(self, other):
 		if other.size != self.size:
@@ -130,6 +137,12 @@ class Vector:
 		for i in range(self.size):
 			res_list[i] = self.values[i] * val
 		return Vector(res_list)
+
+	def e_mul(self, other):
+		res = Vector(self.values[:])
+		for i in range(self.size):
+			res.values[i] *= other.values[i]
+		return res
 
 	def normalize(self):
 		return self.scalar_mul(1 / abs(self))
@@ -198,13 +211,8 @@ def convert_to_basis(p, basis):
 	:param basis: three Vector3s representing the three basis vectors for the new basis
 	:return: point p in relative coordinates to the basis
 	"""
-	conversion_matrix = [
-		basis[0].as_list(),
-		basis[1].as_list(),
-		basis[2].as_list(),
-	]
 
-	conversion_matrix = np.invert(conversion_matrix)
+	conversion_matrix = np.linalg.inv(basis)
 	return np.matmul(conversion_matrix, p.as_list())
 
 

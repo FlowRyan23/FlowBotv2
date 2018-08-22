@@ -5,6 +5,7 @@ from time import time
 from configparser import ConfigParser
 
 import util.game_info as gi
+import util.vector_math as vmath
 from util.game_info import state_size
 from util.vector_math import angle, Vector3
 from util.information import RunInfo
@@ -19,9 +20,9 @@ TRAIN = True
 SAVE_NET = True
 COLLECT_DATA = True
 SAVE_DATA = COLLECT_DATA and True
-LOAD = False
+LOAD = True
 PRESERVE = True
-LOAD_BOT_NAME = "no name"
+LOAD_BOT_NAME = "FlowBot1533812543"
 PROJECT_ROOT = str(__file__).replace("Agents\\FlowBotv2\\flow_bot.py", "")
 NET_PATH = PROJECT_ROOT + "Networks/saved/"
 TEMP_DIR = PROJECT_ROOT + "util/temp/"
@@ -31,35 +32,42 @@ LOG_DIR = PROJECT_ROOT + "util/logs/"
 INFO = True
 EPISODE_INFO = True
 SPAM_INFO = False
-FITNESS_INFO = True
-INFO_INTERVAL = 10.0		# in seconds
+RENDER = True
+INFO_INTERVAL = 10.0					# in seconds
+FULL_SAVE_INTERVAL = 5					# how often the bot along with all collected data is saved (in iterations)
+SAVE_INTERVAL = 1						# how often the bot  is saved (in iterations)
+
 
 # net and training properties
 NET_NAME = "FlowBot" + str(int(time()))
-BOT_TYPE = "no_flip"
+BOT_TYPE = "no_noop"
 INPUT_COMPOSITION_FILE = PROJECT_ROOT + "Agents/FlowBotv2/state_composition.cfg"
 N_OUTPUT = len(gi.get_action_states(BOT_TYPE))
 START_EPSILON = 0.9						# chance that a random action will be chosen instead of the one with highest q_value
-EPSILON_DECAY = 5e-4					# amount the epsilon value decreases every episode
+EPSILON_DECAY = 5e-4 					# amount the epsilon value decreases every episode
+EPSILON_STARTUP_DECAY = 0				# amount the epsilon value decreases every time the bot is loaded (not the first time)
 MIN_EPSILON = 0.1						# minimum epsilon value
 USE_SARSA = False
-RELATIVE_COORDINATES = False
+RELATIVE_COORDINATES = True
+ALLOW_NEGATIVE_REWARD = False
 
 # end conditions
-EC_FIXED_LENGTH = 5000
+EC_FIXED_LENGTH = 2000
 EC_GOAL = False
 EC_GAME_END = False
 EC_LANDED = False
 END_CONDITIONS = [EC_FIXED_LENGTH, EC_GOAL, EC_GAME_END, EC_LANDED]
 
 # rewards
-RE_HEIGHT = True						# car.z / ceiling_height
+RE_HEIGHT = False						# car.z / ceiling_height
 RE_AIRTIME = False						# +1 for every iteration where !car.on_ground (given when landed)
-RE_BALL_DIST = False					# distance between car and ball
+RE_BALL_DIST = True					# distance between car and ball
 RE_SS_DIFF = False						# difference between current and previous state score
 RE_FACING_UP = False					# angle between z-axes and car.facing (normalized to 0-1)
 RE_FACING_OPP = False					# angle between y-axes and car.facing (normalized to 0-1)
-REWARDS = [RE_HEIGHT, RE_AIRTIME, RE_BALL_DIST, RE_SS_DIFF, RE_FACING_UP, RE_FACING_OPP]
+RE_FACING_BALL = True					# angle between car->ball and car.facing (normalized to 0-1)
+REWARDS = [RE_HEIGHT, RE_AIRTIME, RE_BALL_DIST, RE_SS_DIFF, RE_FACING_UP, RE_FACING_OPP, RE_FACING_BALL]
+REWARD_EXP = 2
 
 # how strongly the individual components of fitness contribute to the whole
 STATE_SCORE_COMPOSITION = {
@@ -82,8 +90,10 @@ class FlowBot(BaseAgent):
 		if not TRAIN:
 			print("\n-----NOT TRAINING-----\n")
 
-		# clear the contents of temp info files
+		# clear the contents of temp info files and the log
 		clear_temp()
+		with open(LOG_DIR + "log.txt", "w") as f:
+			f.write("")
 
 		self.name = NET_NAME
 		self.prev_info_time = time()				# used to keep track of time since last info
@@ -97,6 +107,7 @@ class FlowBot(BaseAgent):
 		self.epsilon_decay = EPSILON_DECAY
 		self.sarsa = USE_SARSA
 		self.rel_coords = RELATIVE_COORDINATES
+		self.reward_exp = REWARD_EXP
 		self.aps = 0						# actions per second
 
 		# list of tuples of (state, action, reward);
@@ -132,19 +143,22 @@ class FlowBot(BaseAgent):
 		self.aps += 1
 
 		game_info = gi.GameInfo(game_tick_packet)		# the game_tick_packet struct is converted to a GameInfo-Object
-		if self.rel_coords:
-			game_info = game_info.get_relative(self.index)
-
 		if self.team == gi.ORANGE_TEAM:
 			game_info.mirror()
-		state = game_info.get_state(self.index, self.state_comp)		# a list of float values to be fed to the net
+
+		if self.rel_coords:
+			state = game_info.get_relative(self.index).get_state(self.index, self.state_comp)
+		else:
+			state = game_info.get_state(self.index, self.state_comp)		# a list of float values to be fed to the net
 
 		# set the reward for the previous iteration; not possible in the first iteration because not previous state and action are available
+		reward = 0
 		if self.prev_state is not None and self.prev_q_values is not None and self.prev_action is not None:
+			reward = self.reward(game_info)
 			self.replay_memory.add(state=self.prev_state,
 								q_values=self.prev_q_values,
 								action=self.prev_action,
-								reward=self.reward(game_info))
+								reward=reward)
 		self.prev_state = state
 		self.prev_game_info = game_info
 
@@ -158,9 +172,15 @@ class FlowBot(BaseAgent):
 		self.prev_q_values = predicted_q_values
 
 		# get the input from the controller
-		user_action = xbox_to_nn_controls(get_controller_output())
+		user_action = None
+		try:
+			user_action = xbox_to_nn_controls(get_controller_output())
+		except AttributeError as e:
+			if SPAM_INFO:
+				print("no controller found")
+
 		# executes a special user action
-		if time() - self.user_input_cool_down > 1:
+		if time() - self.user_input_cool_down > 1 and user_action is not None:
 			for key in USER_OPTIONS:
 				if user_action == USER_OPTIONS[key]:
 					if key == "toggle_user_input":
@@ -186,9 +206,9 @@ class FlowBot(BaseAgent):
 		if self.episode_end_condition.is_met(game_info) and TRAIN:
 			self.next_episode()
 
-			if self.run_info.episode_count % 50 == 0:
+			if self.run_info.episode_count % FULL_SAVE_INTERVAL == 0:
 				self.save(info_files=True)
-			elif self.run_info.episode_count % 10 == 0:
+			elif self.run_info.episode_count % SAVE_INTERVAL == 0:
 				self.save()
 
 		# info for debugging purposes
@@ -204,12 +224,15 @@ class FlowBot(BaseAgent):
 			print("Action:", selected_action)
 			# print("Return Vector:", return_controller_state)
 			# print("------------------------------------------------------")
-			print()
+			# print()
 
 			self.prev_info_time = cur_time		# set time of previous info to now
 			self.aps = 0					# reset actions per second
 
 		self.run_info.iteration(net_output=predicted_q_values, action=selected_action, user=(actor == "user"), verbose=SPAM_INFO)
+
+		if RENDER:
+			self.render(gi.GameInfo(game_tick_packet), reward)
 
 		return return_controller_state
 
@@ -220,13 +243,13 @@ class FlowBot(BaseAgent):
 		:return: the reward for the change in state
 		"""
 		car = cur_game_info.get_player(self.index)
+		facing = Vector3.from_list(car.get_basis()[0])
 
 		reward = 0
 
 		if RE_AIRTIME:
 			if self.episode_end_condition.is_met(cur_game_info, remember=False):
 				reward += self.reward_accumulator
-				print("Airtime:", reward)
 				self.reward_accumulator = 0
 			else:
 				if not car.is_on_ground:
@@ -237,17 +260,48 @@ class FlowBot(BaseAgent):
 
 		if RE_FACING_UP:
 			vertical = Vector3(0, 0, 1)
-			reward += angle(car.get_facing(), vertical) / 180
+			fu_component = angle(facing, vertical) / 180
+			fu_component = (abs(fu_component) - 0.5) * 2
+
+			if not ALLOW_NEGATIVE_REWARD:
+				fu_component = max(0, fu_component)
+
+			reward += fu_component
 
 		if RE_FACING_OPP:
 			forward = Vector3(0, 1, 0)
-			reward += angle(car.get_facing(), forward) / 180
+
+			fo_component = angle(facing, forward) / 180
+			fo_component = (abs(fo_component) - 0.5) * 2
+
+			if not ALLOW_NEGATIVE_REWARD:
+				fo_component = max(0, fo_component)
+
+			reward += fo_component
+
+		if RE_FACING_BALL:
+			fb_component = (180 - cur_game_info.angle_to_ball(self.index)[0]) / 180
+			fb_component = (abs(fb_component) - 0.5) * 2
+
+			if not ALLOW_NEGATIVE_REWARD:
+				fb_component = max(0, fb_component)
+
+			reward += fb_component
 
 		if RE_BALL_DIST:
-			reward = cur_game_info.dist_to_ball(player_id=self.index)[0]
+			dist = cur_game_info.dist_to_ball(player_id=self.index)[0]
+			if dist != 10000:
+				reward += max(0, (10000 - dist) / 10000)
 
-		# reward = self.state_score(cur_game_info) - self.state_score(self.prev_game_info)
-		return reward
+		n_enabled_rewards = len([b for b in REWARDS if b])
+		reward /= n_enabled_rewards
+
+		is_neg = reward < 0		# raising reward to an even power would result in loss of sign
+		reward = abs(reward) ** self.reward_exp
+		if ALLOW_NEGATIVE_REWARD and is_neg:
+			return -reward
+		else:
+			return reward
 
 	def next_episode(self):
 		"""
@@ -295,6 +349,61 @@ class FlowBot(BaseAgent):
 		self.run_info.state_score(angle, distance, speed, boost, super_sonic)
 		return state_score
 
+	def render(self, state, reward=0):
+		r = self.renderer
+
+		car = state.get_player(self.index)
+		ball = state.ball_info
+
+		r.begin_rendering()
+
+		# some default colors
+		red = r.create_color(255, 255, 0, 0)
+		green = r.create_color(255, 0, 255, 0)
+		blue = r.create_color(255, 0, 0, 255)
+
+		text_color = r.white()
+
+		# info
+		r.draw_string_2d(8, 16, 1, 1, "Episode: " + str(self.run_info.episode_count), text_color)
+		r.draw_string_2d(8, 32, 1, 1, "Epsilon: " + str(self.epsilon), text_color)
+		r.draw_string_2d(8, 48, 1, 1, "Reward: " + str("{0:.3f}").format(reward), text_color)
+
+		# basis of the relative coordinates
+		basis_x, basis_y, basis_z = car.get_basis(as_v3=True)
+		basis_x = basis_x.normalize().scalar_mul(100)
+		basis_y = basis_y.normalize().scalar_mul(100)
+		basis_z = basis_z.normalize().scalar_mul(100)
+		pos = car.location.as_list()
+		x_line_end = (car.location + basis_x).as_list()
+		r.draw_line_3d(pos, x_line_end, color=red)
+		y_line_end = (car.location + basis_y).as_list()
+		r.draw_line_3d(pos, y_line_end, color=blue)
+		z_line_end = (car.location + basis_z).as_list()
+		r.draw_line_3d(pos, z_line_end, color=green)
+
+		# velocities
+		vel_line_end = (car.location + car.velocity).as_list()
+		r.draw_line_3d(pos, vel_line_end, color=red)
+
+		vel_line_end = (ball.location + ball.velocity).as_list()
+		r.draw_line_3d(ball.location.as_list(), vel_line_end, color=red)
+
+		for p in state.get_all_players():
+			if not p.player_id == self.index:
+				vel_line_end = (p.location + p.velocity).as_list()
+				r.draw_line_3d(p.location.as_list(), vel_line_end, color=red)
+
+		# ball box
+		r2 = Renderer(r)
+		box_anchor = ball.location - Vector3(gi.BALL_SIZE/2, gi.BALL_SIZE/2, gi.BALL_SIZE/2)
+		r2.draw_cube(box_anchor.as_list(), size=gi.BALL_SIZE, color=r2.red)
+
+		# line to ball
+		# r.draw_line_3d(pos, ball.location.as_list(), color=red)
+
+		r.end_rendering()
+
 	def retire(self):
 		print("retire")
 		if SAVE_NET:
@@ -311,6 +420,7 @@ class FlowBot(BaseAgent):
 			run_indexer[self.name]["end_conditions"] = str(END_CONDITIONS).replace("[", "").replace("]", "")
 			run_indexer[self.name]["bot_type"] = BOT_TYPE
 			run_indexer[self.name]["reward"] = str(REWARDS).replace("[", "").replace("]", "")
+			run_indexer[self.name]["reward_exp"] = str(self.reward_exp)
 			run_indexer[self.name]["n_episodes"] = str(self.run_info.episode_count)
 			run_indexer[self.name]["epsilon"] = str(self.epsilon)
 			run_indexer[self.name]["epsilon_decay"] = str(self.epsilon_decay)
@@ -322,6 +432,7 @@ class FlowBot(BaseAgent):
 				"end_conditions": str(END_CONDITIONS).replace("[", "").replace("]", ""),
 				"bot_type": BOT_TYPE,
 				"reward": str(REWARDS).replace("[", "").replace("]", ""),
+				"reward_exp": str(self.reward_exp),
 				"n_episodes": str(self.run_info.episode_count),
 				"epsilon": str(self.epsilon),
 				"epsilon_decay": str(self.epsilon_decay),
@@ -366,13 +477,14 @@ class FlowBot(BaseAgent):
 		# reset attributes which may be set incorrectly in constructor
 		self.name = new_name
 		self.action_states = gi.get_action_states(net_info["bot_type"])		
-		self.episode_end_condition = EpisodeEndCondition(form_end_conditions(net_info["end_conditions"]))
-		self.epsilon = float(net_info["epsilon"])
+		self.episode_end_condition = form_end_conditions(net_info["end_conditions"])
+		self.epsilon = max(0.1, float(net_info["epsilon"]) - EPSILON_STARTUP_DECAY)
 		self.epsilon_decay = float(net_info["epsilon_decay"])
 		self.replay_memory = ReplayMemory(n_actions=len(self.action_states))
 		self.state_comp.read(LOG_DIR + bot_name + "/state_composition.cfg")
-		self.sarsa = bool(net_info["sarsa"])
-		self.rel_coords = bool(net_info["relative_coordinates"])
+		self.sarsa = net_info["sarsa"] == "True"
+		self.reward_exp = int(net_info["reward_exp"])
+		self.rel_coords = net_info["relative_coordinates"] == "True"
 
 		self.net = NeuralNetwork.restore(bot_name, new_name=new_name, verbose=True)
 		self.run_info.restore(bot_name)
@@ -415,7 +527,9 @@ def form_end_conditions(condition_string):
 	except (TypeError, ValueError):
 		conditions[0] = None
 	for i in range(1, len(conditions)):
-		conditions[i] = bool(conditions[i])
+		conditions[i] = conditions[i] == "True"
+
+	return EpisodeEndCondition(fixed_length=conditions[0], goal=conditions[1], game_end=conditions[2], landed=conditions[3])
 
 
 def clear_temp():
@@ -468,3 +582,115 @@ class EpisodeEndCondition:
 			self.iteration_count = 0
 
 		return is_met
+
+
+class Renderer:
+	def __init__(self, rlbot_renderer):
+		self.rlbot_renderer = rlbot_renderer
+
+		# todo add colors
+		self.red = rlbot_renderer.create_color(255, 255, 0, 0)
+		self.green = rlbot_renderer.create_color(255, 0, 255, 0)
+		self.blue = rlbot_renderer.create_color(255, 0, 0, 255)
+		self.white = rlbot_renderer.white()
+		self.black = rlbot_renderer.black()
+
+	def draw_cube(self, pos, size, color=None):
+		if color is None:
+			color = self.black
+
+		self.draw_box(pos, size, size, size, color)
+
+	def draw_box(self, pos, width, length, height, color=None):
+		if color is None:
+			color = self.black
+
+		r = self.rlbot_renderer
+
+		line_end = pos[:]
+		line_end[0] += length
+		r.draw_line_3d(pos, line_end, color)
+
+		line_end = pos[:]
+		line_end[1] += width
+		r.draw_line_3d(pos, line_end, color)
+
+		line_end = pos[:]
+		line_end[2] += height
+		r.draw_line_3d(pos, line_end, color)
+
+		# ------
+
+		line_start = pos[:]
+		line_start[2] += height
+
+		line_end = line_start[:]
+		line_end[0] += length
+		r.draw_line_3d(line_start, line_end, color)
+
+		line_end = line_start[:]
+		line_end[1] += width
+		r.draw_line_3d(line_start, line_end, color)
+
+		# ------
+
+		line_start = pos[:]
+		line_start[0] += length
+		line_start[1] += width
+
+		line_end = line_start[:]
+		line_end[0] -= length
+		r.draw_line_3d(line_start, line_end, color)
+
+		line_end = line_start[:]
+		line_end[1] -= width
+		r.draw_line_3d(line_start, line_end, color)
+
+		# ------
+
+		line_start = pos[:]
+		line_start[0] += length
+
+		line_end = pos[:]
+		line_end[0] += length
+		line_end[2] += height
+		r.draw_line_3d(line_start, line_end, color)
+
+		# ------
+
+		line_start = pos[:]
+		line_start[1] += width
+
+		line_end = pos[:]
+		line_end[1] += width
+		line_end[2] += height
+		r.draw_line_3d(line_start, line_end, color)
+
+		# ------
+
+		line_start = pos[:]
+		line_start[0] += length
+		line_start[1] += width
+		line_start[2] += height
+
+		line_end = line_start[:]
+		line_end[0] -= length
+		r.draw_line_3d(line_start, line_end, color)
+
+		line_end = line_start[:]
+		line_end[1] -= width
+		r.draw_line_3d(line_start, line_end, color)
+
+		line_end = line_start[:]
+		line_end[2] -= height
+		r.draw_line_3d(line_start, line_end, color)
+
+
+def log(*args):
+	with open(LOG_DIR + "log.txt", "a") as log_file:
+		s = ""
+		for a in args:
+			s += str(a) + " "
+
+		s = s.rstrip(" ") + "\n"
+		log_file.write(s)

@@ -21,11 +21,10 @@ def average_into(l, n_points):
 	res = []
 	batch_size = len(l)/n_points
 	for i in range(n_points):
+		begin = int(i * batch_size)
 		if i == n_points:
-			begin = int(i*batch_size)
-			end = len(l)-1
+			end = -1
 		else:
-			begin = int(i*batch_size)
 			end = int((i+1)*batch_size)
 		res.append(sum(l[begin:end]) / (end-begin))
 

@@ -1,4 +1,5 @@
 import os
+import math
 import numpy as np
 import tensorflow as tf
 from enum import Enum
@@ -127,10 +128,7 @@ class NeuralNetwork:
 	def train(self, trainining_data, batch_size, n_epochs, learning_rate=1e-3, save=True):
 		steps = 0
 		start_time = time()
-
-		n_batches = len(trainining_data[0]) / batch_size
-		if int(n_batches) != n_batches:
-			n_batches = int(n_batches) + 1
+		n_batches = math.ceil(len(trainining_data[0]) / batch_size)
 
 		for epoch in range(n_epochs):
 			for i in range(n_batches):

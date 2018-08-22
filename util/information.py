@@ -189,11 +189,16 @@ def q_vals_plot(axis, vals):
 		axis[i].plot(x, y_r, y_p)
 
 
-# todo x-Axis gets wrong names
 def simple_averaged_plot(axis, vals):
 	n_points = min(len(vals), 100)
 	x = [i * (len(vals)/n_points) for i in range(n_points)]
 	y = stats.average_into(vals, n_points)
+
+	print("-----")
+	print(len(x))
+	print(sum(vals) / len(vals), len(vals))
+	print(sum(y) / len(y), len(y))
+
 	axis.clear()
 	axis.plot(x, y)
 
@@ -212,27 +217,20 @@ def net_output_plot(axis, vals):
 
 
 def net_plot_helper(axis, vals):
-	n_acts = len(vals[0])
-	x = [i for i in range(n_acts)]
 	y = []
+	for a in range(len(vals[0])):
+		y_cur = 0
+		for iter in range(len(vals)):
+			y_cur += vals[iter][a]
+		y.append(y_cur / len(vals))
 
-	ys = np.transpose(vals)
-	for a in range(n_acts-1):
-		try:
-			y.append(sum(ys[a]) / len(vals))
-		except IndexError as e:
-			print("a", a)
-			print("n_acts", n_acts)
-			print("len(vals[:])", len(vals[:]))
-			print("vals", vals)
-			raise e
-
+	x = [i for i in range(len(y))]
 	axis.clear()
-	axis.hist(vals, x, histtype="bar")
+	axis.bar(x, y)
 
 
 if __name__ == "__main__":
-	diagrams = False
+	diagrams = True
 	read_file = False
 	plot_test = False
 
