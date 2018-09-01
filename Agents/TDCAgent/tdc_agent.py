@@ -1,5 +1,4 @@
 import util.game_info as gi
-import util.vector_math as vmath
 import numpy as np
 from time import time
 from Networks.legacy.XInputReader import get_xbox_output as get_controller_output
@@ -24,7 +23,7 @@ class Agent (BaseAgent):
 	def get_output(self, game_tick_packet):
 		controls = xbox_to_rlbot_controls(get_controller_output())
 		game_info = GameInfo(game_tick_packet)
-		self.render(game_info)
+		# self.render(game_info)
 
 		new_time = time()
 		if new_time - self.prev_time > INFO_INTERVAL:
@@ -39,16 +38,18 @@ class Agent (BaseAgent):
 			# print("Basis x:", base_x)
 			# print("Basis y:", base_y)
 			# print("Basis z:", base_z)
-			fb_component = (180 - game_info.angle_to_ball(self.index)[0]) / 180
-			fb_component = (abs(fb_component) - 0.5) * 2
-			print(fb_component)
+			# fb_component = (180 - game_info.angle_to_ball(self.index)[0]) / 180
+			# fb_component = (abs(fb_component) - 0.5) * 2
+			# print(fb_component)
 			# print("Game info array:", game_info_array)
 			# print("Game info mirror", game_info_as_array(game_info.mirror())[0])
-			# print("Location:", game_info.blue_players[0].Location)
+			# print("Location:", game_info.get_player(self.index).location)
 			# print("Velocity:", abs(game_info.blue_players[0].Velocity))
 			# print("Ball Location:", game_info.ball_info.Location)
 			# facing = game_info.get_player(self.index).get_facing()
 			# print("Facing:", facing)
+			car = game_info.get_player(self.index)
+			print("is on ground" if car.is_on_ground else "is in the air")
 			# print("norm facing:", facing.normalize())
 			# print("angle to up:", vmath.angle(facing, vmath.Vector3(0, 0, 1)))
 			# print("angle to up:", vmath.angle(vmath.Vector3(base_x[0], base_x[1], base_x[2]), vmath.Vector3(0, 0, 1)))

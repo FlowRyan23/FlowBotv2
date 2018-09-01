@@ -105,5 +105,6 @@ def discrete_angle(step_size=20, no_neg=False):
 
 
 if __name__ == '__main__':
-	style.use("fivethirtyeight")
-	discrete_angle()
+	a = ["RE_HEIGHT", "RE_AIRTIME", "RE_BALL_DIST", "RE_SS_DIFF", "RE_FACING_UP", "RE_FACING_OPP", "RE_FACING_BALL"]
+	for s in a:
+		print("[\"" + s.lower() + "\"] += ")

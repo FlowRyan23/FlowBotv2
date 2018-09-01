@@ -74,11 +74,10 @@ ACTION_DESCRIPTIONS = [
 BOT_ACTION_STATES = {
 	"grounded_simple": 	[0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 	"grounded": 		[0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-	"grounded_2": 		[0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 	"flying":			[0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 	"no_flip":			[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 	"no_jmp_boost":		[0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1],
-	"1%":				[0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+	"1p":				[0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
 	"no_noop":			[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 	"all":				[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 }
@@ -228,9 +227,11 @@ GRAVITATION = 650
 N_BIG_BOOSTS = 6
 N_SMALL_BOOSTS = 28
 
+FLOOR_HEIGHT = 17
 ARENA_WIDTH = 8240
 ARENA_LENGTH = 12000
 ARENA_HEIGHT = 2000
+MAX_DIST = math.sqrt(ARENA_HEIGHT**2 + ARENA_LENGTH**2 + ARENA_HEIGHT**2)
 
 BALL_SIZE = 175
 
@@ -268,10 +269,10 @@ class GameInfo:
 		ball_pos = self.ball_info.location
 
 		dist = vmath.dist(player_pos, ball_pos)
-		flat_dist = vmath.dist(vmath.Vector3(player_pos.x, player_pos.y, 0), vmath.Vector3(ball_pos.x, ball_pos.y, 0))
-		height_dist = abs(player_pos.z-ball_pos.z)
+		horizontal_dist = vmath.dist(vmath.Vector3(player_pos.x, player_pos.y, 0), vmath.Vector3(ball_pos.x, ball_pos.y, 0))
+		vertical_dist = abs(player_pos.z-ball_pos.z)
 
-		return dist, flat_dist, height_dist
+		return dist, horizontal_dist, vertical_dist
 
 	def angle_to_ball(self, player_id=0):
 		player_pos = self.get_player(player_id).location
@@ -778,4 +779,4 @@ def print_action_states(bot_type):
 
 
 if __name__ == '__main__':
-	pass
+	print(MAX_DIST)

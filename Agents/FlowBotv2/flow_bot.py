@@ -5,7 +5,6 @@ from time import time
 from configparser import ConfigParser
 
 import util.game_info as gi
-import util.vector_math as vmath
 from util.game_info import state_size
 from util.vector_math import angle, Vector3
 from util.information import RunInfo
@@ -20,7 +19,7 @@ TRAIN = True
 SAVE_NET = True
 COLLECT_DATA = True
 SAVE_DATA = COLLECT_DATA and True
-LOAD = True
+LOAD = False
 PRESERVE = True
 LOAD_BOT_NAME = "FlowBot1533812543"
 PROJECT_ROOT = str(__file__).replace("Agents\\FlowBotv2\\flow_bot.py", "")
@@ -30,21 +29,21 @@ LOG_DIR = PROJECT_ROOT + "util/logs/"
 
 # info
 INFO = True
-EPISODE_INFO = True
+EPISODE_INFO = False
 SPAM_INFO = False
-RENDER = True
+RENDER = False
 INFO_INTERVAL = 10.0					# in seconds
 FULL_SAVE_INTERVAL = 5					# how often the bot along with all collected data is saved (in iterations)
-SAVE_INTERVAL = 1						# how often the bot  is saved (in iterations)
+SAVE_INTERVAL = 1						# how often the bot is saved (in iterations)
 
 
 # net and training properties
-NET_NAME = "FlowBot" + str(int(time()))
-BOT_TYPE = "no_noop"
+NET_NAME = "FlowBot_tob" + str(int(time()))
+BOT_TYPE = "all"
 INPUT_COMPOSITION_FILE = PROJECT_ROOT + "Agents/FlowBotv2/state_composition.cfg"
 N_OUTPUT = len(gi.get_action_states(BOT_TYPE))
 START_EPSILON = 0.9						# chance that a random action will be chosen instead of the one with highest q_value
-EPSILON_DECAY = 5e-4 					# amount the epsilon value decreases every episode
+EPSILON_DECAY = 1e-3					# amount the epsilon value decreases every episode (default 5e-4)
 EPSILON_STARTUP_DECAY = 0				# amount the epsilon value decreases every time the bot is loaded (not the first time)
 MIN_EPSILON = 0.1						# minimum epsilon value
 USE_SARSA = False
@@ -52,7 +51,7 @@ RELATIVE_COORDINATES = True
 ALLOW_NEGATIVE_REWARD = False
 
 # end conditions
-EC_FIXED_LENGTH = 2000
+EC_FIXED_LENGTH = 500
 EC_GOAL = False
 EC_GAME_END = False
 EC_LANDED = False
@@ -61,23 +60,12 @@ END_CONDITIONS = [EC_FIXED_LENGTH, EC_GOAL, EC_GAME_END, EC_LANDED]
 # rewards
 RE_HEIGHT = False						# car.z / ceiling_height
 RE_AIRTIME = False						# +1 for every iteration where !car.on_ground (given when landed)
-RE_BALL_DIST = True					# distance between car and ball
-RE_SS_DIFF = False						# difference between current and previous state score
+RE_BALL_DIST = False					# distance between car and ball
 RE_FACING_UP = False					# angle between z-axes and car.facing (normalized to 0-1)
 RE_FACING_OPP = False					# angle between y-axes and car.facing (normalized to 0-1)
 RE_FACING_BALL = True					# angle between car->ball and car.facing (normalized to 0-1)
-REWARDS = [RE_HEIGHT, RE_AIRTIME, RE_BALL_DIST, RE_SS_DIFF, RE_FACING_UP, RE_FACING_OPP, RE_FACING_BALL]
+REWARDS = [RE_HEIGHT, RE_AIRTIME, RE_BALL_DIST, RE_FACING_UP, RE_FACING_OPP, RE_FACING_BALL]
 REWARD_EXP = 2
-
-# how strongly the individual components of fitness contribute to the whole
-STATE_SCORE_COMPOSITION = {
-	"angle_to_ball": 0.0,				# smaller angle is better
-	"dist_from_ball": 0.0,				# less distance is better
-	"speed": 0.0,						# faster is better
-	"boost": 0.0,						# more boost is better
-	"super_sonic": 0.0					# being super sonic (95% of max speed) is better
-}
-MAX_STATE_SCORE = sum([STATE_SCORE_COMPOSITION[key] for key in STATE_SCORE_COMPOSITION])					# maximum score a state can have
 
 USER_INPUT_ENABLED = False				# allows/disallows user input
 USER_OPTIONS = {"toggle_user_input": [0, 0, 0, 0, 1, 1, 0, 0, 0]}						# special inputs the user can make to change parameters of the bot
@@ -126,14 +114,17 @@ class FlowBot(BaseAgent):
 		else:
 			self.net = NeuralNetwork(NET_NAME, [state_size(self.state_comp)], len(self.action_states))
 			self.net.add_fc(256, activation=ActivationType.RELU)
+			self.net.add_drop_out(0.2)
 			self.net.add_fc(512, activation=ActivationType.RELU)
+			self.net.add_drop_out(0.2)
 			self.net.add_fc(256, activation=ActivationType.RELU)
+			self.net.add_drop_out(0.2)
 			self.net.commit()
 			self.run_info.net = self.net
 
 		if INFO:
 			print("FlowBot[name={0:s}], team={1:d}, index={2:d}".format(self.name, self.team, self.index))
-			print("Fitness Composition:", STATE_SCORE_COMPOSITION)
+			print("Fitness Composition:", REWARDS)
 
 		# the net is ready to be called
 		self.net_ready = True
@@ -203,7 +194,7 @@ class FlowBot(BaseAgent):
 		self.prev_action = gi.get_action_index(selected_action, BOT_TYPE)
 
 		# at the end of every episode the data in the replay memory is updated and the net is trained with the new data
-		if self.episode_end_condition.is_met(game_info) and TRAIN:
+		if self.episode_end_condition.is_met(game_info):
 			self.next_episode()
 
 			if self.run_info.episode_count % FULL_SAVE_INTERVAL == 0:
@@ -216,12 +207,13 @@ class FlowBot(BaseAgent):
 		if INFO and cur_time-self.prev_info_time > INFO_INTERVAL:
 			print("\n------------------------Info------------------------")
 			print("Running", self.aps/INFO_INTERVAL, "a/s")
+			print("Episode", self.run_info.episode_count)
 			# print("Game state:", game_info)
-			print("Epsilon:", self.epsilon)
-			print("Memory size:", self.replay_memory.size)
-			print("Net input:", state)
-			print("Net Output:", str(predicted_q_values))
-			print("Action:", selected_action)
+			print("Epsilon:", round(self.epsilon, 5))
+			# print("Memory size:", self.replay_memory.size)
+			# print("Net input:", state)
+			# print("Net Output:", str(predicted_q_values))
+			# print("Action:", selected_action)
 			# print("Return Vector:", return_controller_state)
 			# print("------------------------------------------------------")
 			# print()
@@ -236,6 +228,35 @@ class FlowBot(BaseAgent):
 
 		return return_controller_state
 
+	def next_episode(self):
+		"""
+		updates the q_values in the replay memory and trains the net
+		:return: the time it took to 1: update the qvs and 2: train the net
+		"""
+		# decrease epsilon
+		self.epsilon = self.epsilon - self.epsilon_decay
+		if self.epsilon < MIN_EPSILON:
+			self.epsilon = MIN_EPSILON
+
+		mem_up_time, train_start, train_end = 0, 0, 0
+		if TRAIN:
+			# update the q_values in the replay memory
+			mem_up_time = self.replay_memory.update_q_values(sarsa=self.sarsa)
+			# todo vary learning rate
+			# train the net
+			train_start = time()
+			self.net.train(self.replay_memory.get_training_set(), batch_size=512, n_epochs=4, save=SAVE_NET)
+			train_end = time()
+
+		self.run_info.episode(mem_up_time, train_end - train_start, verbose=EPISODE_INFO)
+		# write data to file
+		if COLLECT_DATA:
+			self.replay_memory.write()
+			self.run_info.write()
+
+		# todo research different strategies for replay memory
+		self.replay_memory.clear()
+
 	def reward(self, cur_game_info):
 		"""
 		calculates the reward the agent receives for transitioning from one state(self.prev_game_info) to another(cur_game_info) using the chosen action
@@ -246,17 +267,25 @@ class FlowBot(BaseAgent):
 		facing = Vector3.from_list(car.get_basis()[0])
 
 		reward = 0
+		h_component = 0
+		at_component = 0
+		bd_component = 0
+		fu_component = 0
+		fo_component = 0
+		fb_component = 0
 
 		if RE_AIRTIME:
-			if self.episode_end_condition.is_met(cur_game_info, remember=False):
-				reward += self.reward_accumulator
+			if self.episode_end_condition.was_met:
+				at_component = self.reward_accumulator / self.run_info.episode_lengths[-1]
+				reward += at_component
 				self.reward_accumulator = 0
 			else:
 				if not car.is_on_ground:
 					self.reward_accumulator += 1
 
 		if RE_HEIGHT:
-			reward += car.location.z / gi.ARENA_HEIGHT
+			h_component = (car.location.z - gi.FLOOR_HEIGHT) / gi.ARENA_HEIGHT
+			reward += h_component
 
 		if RE_FACING_UP:
 			vertical = Vector3(0, 0, 1)
@@ -289,10 +318,16 @@ class FlowBot(BaseAgent):
 			reward += fb_component
 
 		if RE_BALL_DIST:
-			dist = cur_game_info.dist_to_ball(player_id=self.index)[0]
-			if dist != 10000:
-				reward += max(0, (10000 - dist) / 10000)
+			bd_component = cur_game_info.dist_to_ball(player_id=self.index)[0]
+			if bd_component != gi.MAX_DIST:
+				bd_component = max(0, (gi.MAX_DIST - bd_component) / gi.MAX_DIST)
 
+			reward += bd_component
+
+		self.run_info.reward(h_component, at_component, bd_component, fu_component, fo_component, fb_component)
+
+		if not ALLOW_NEGATIVE_REWARD:
+			reward = max(0, reward)
 		n_enabled_rewards = len([b for b in REWARDS if b])
 		reward /= n_enabled_rewards
 
@@ -302,52 +337,6 @@ class FlowBot(BaseAgent):
 			return -reward
 		else:
 			return reward
-
-	def next_episode(self):
-		"""
-		updates the q_values in the replay memory and trains the net
-		:return: the time it took to 1: update the qvs and 2: train the net
-		"""
-		# update the q_values in the replay memory
-		mem_up_time = self.replay_memory.update_q_values(sarsa=self.sarsa)
-
-		# decrease epsilon
-		self.epsilon = round(self.epsilon - self.epsilon_decay, 5)
-		if self.epsilon < MIN_EPSILON:
-			self.epsilon = MIN_EPSILON
-
-		# todo vary learning rate
-		# train the net
-		train_start = time()
-		self.net.train(self.replay_memory.get_training_set(), batch_size=512, n_epochs=4, save=SAVE_NET)
-		train_end = time()
-
-		self.run_info.episode(mem_up_time, train_end - train_start, verbose=EPISODE_INFO)
-		# write data to file
-		if COLLECT_DATA:
-			self.replay_memory.write()
-			self.run_info.write()
-
-		# todo research different strategies for replay memory
-		self.replay_memory.clear()
-
-	def state_score(self, game_info):
-		"""
-		calculates the fitness for a single state(GameInfo-Object)
-		:param game_info: the GameInfo-object that contains the state information
-		:return: the score of the state (integer >=0)
-		"""
-		own_car = game_info.get_player(self.index)
-
-		angle = (abs(game_info.angle_to_ball(0)[1])/180) * STATE_SCORE_COMPOSITION["angle_to_ball"]
-		distance = ((13175 - game_info.dist_to_ball(0)[1]) / 13175) * STATE_SCORE_COMPOSITION["dist_from_ball"]
-		speed = (abs(own_car.velocity) / gi.MAX_VELOCITY) * STATE_SCORE_COMPOSITION["speed"]
-		boost = 0.01 * own_car.boost * STATE_SCORE_COMPOSITION["boost"]
-		super_sonic = (1 if own_car.is_super_sonic else 0) * STATE_SCORE_COMPOSITION["super_sonic"]
-
-		state_score = (angle + distance + speed + boost + super_sonic) / MAX_STATE_SCORE
-		self.run_info.state_score(angle, distance, speed, boost, super_sonic)
-		return state_score
 
 	def render(self, state, reward=0):
 		r = self.renderer
@@ -557,6 +546,7 @@ class EpisodeEndCondition:
 		self.was_met_gs = False
 		self.was_met_ge = False
 		self.was_met_la = False
+		self.was_met = False
 
 	def is_met(self, state, player_id=0, remember=True):
 		if remember:
@@ -568,6 +558,7 @@ class EpisodeEndCondition:
 		game_ended = self.ge and state.is_match_ended
 		has_landed = self.la and not self.was_on_ground and is_on_ground
 
+		is_met = fl_reached or goal_scored or game_ended or has_landed
 		if remember:
 			self.was_round_active = state.is_round_active
 			self.was_on_ground = is_on_ground
@@ -577,9 +568,9 @@ class EpisodeEndCondition:
 			self.was_met_ge = game_ended
 			self.was_met_la = has_landed
 
-		is_met = fl_reached or goal_scored or game_ended or has_landed
-		if is_met and remember:
-			self.iteration_count = 0
+			self.was_met = is_met
+			if is_met:
+				self.iteration_count = 0
 
 		return is_met
 
