@@ -5,12 +5,13 @@ from time import time
 from configparser import ConfigParser
 
 import util.game_info as gi
+import Networks.q_learning as nets
 from util.game_info import state_size
 from util.vector_math import angle, Vector3
 from util.information import RunInfo
 from util.data_processor_v3 import nn_to_rlbot_controls, xbox_to_nn_controls
 from util.XInputReader import get_xbox_output as get_controller_output
-from Networks.q_learning import NeuralNetwork, ActivationType, ReplayMemory
+from Networks.q_learning import NeuralNetwork, ReplayMemory
 
 from rlbot.agents.base_agent import BaseAgent
 
@@ -20,8 +21,8 @@ SAVE_NET = True
 COLLECT_DATA = True
 SAVE_DATA = COLLECT_DATA and True
 LOAD = False
-PRESERVE = True
-LOAD_BOT_NAME = "FlowBot1533812543"
+PRESERVE = False
+LOAD_BOT_NAME = ""
 PROJECT_ROOT = str(__file__).replace("Agents\\FlowBotv2\\flow_bot.py", "")
 NET_PATH = PROJECT_ROOT + "Networks/saved/"
 TEMP_DIR = PROJECT_ROOT + "util/temp/"
@@ -31,19 +32,19 @@ LOG_DIR = PROJECT_ROOT + "util/logs/"
 INFO = True
 EPISODE_INFO = False
 SPAM_INFO = False
-RENDER = False
+RENDER = True
 INFO_INTERVAL = 10.0					# in seconds
 FULL_SAVE_INTERVAL = 5					# how often the bot along with all collected data is saved (in iterations)
 SAVE_INTERVAL = 1						# how often the bot is saved (in iterations)
 
 
 # net and training properties
-NET_NAME = "FlowBot_tob" + str(int(time()))
+NET_NAME = "FlowBot" + str(int(time()))
 BOT_TYPE = "all"
 INPUT_COMPOSITION_FILE = PROJECT_ROOT + "Agents/FlowBotv2/state_composition.cfg"
 N_OUTPUT = len(gi.get_action_states(BOT_TYPE))
 START_EPSILON = 0.9						# chance that a random action will be chosen instead of the one with highest q_value
-EPSILON_DECAY = 1e-3					# amount the epsilon value decreases every episode (default 5e-4)
+EPSILON_DECAY = 2e-3					# amount the epsilon value decreases every episode (default 5e-4)
 EPSILON_STARTUP_DECAY = 0				# amount the epsilon value decreases every time the bot is loaded (not the first time)
 MIN_EPSILON = 0.1						# minimum epsilon value
 USE_SARSA = False
@@ -60,8 +61,8 @@ END_CONDITIONS = [EC_FIXED_LENGTH, EC_GOAL, EC_GAME_END, EC_LANDED]
 # rewards
 RE_HEIGHT = False						# car.z / ceiling_height
 RE_AIRTIME = False						# +1 for every iteration where !car.on_ground (given when landed)
-RE_BALL_DIST = False					# distance between car and ball
-RE_FACING_UP = False					# angle between z-axes and car.facing (normalized to 0-1)
+RE_BALL_DIST = True					# distance between car and ball
+RE_FACING_UP = False						# angle between z-axes and car.facing (normalized to 0-1)
 RE_FACING_OPP = False					# angle between y-axes and car.facing (normalized to 0-1)
 RE_FACING_BALL = True					# angle between car->ball and car.facing (normalized to 0-1)
 REWARDS = [RE_HEIGHT, RE_AIRTIME, RE_BALL_DIST, RE_FACING_UP, RE_FACING_OPP, RE_FACING_BALL]
@@ -89,6 +90,7 @@ class FlowBot(BaseAgent):
 
 		self.state_comp = ConfigParser()
 		self.state_comp.read(INPUT_COMPOSITION_FILE)
+		print(self.state_comp["general"])
 
 		self.episode_end_condition = EpisodeEndCondition()
 		self.epsilon = START_EPSILON
@@ -96,6 +98,7 @@ class FlowBot(BaseAgent):
 		self.sarsa = USE_SARSA
 		self.rel_coords = RELATIVE_COORDINATES
 		self.reward_exp = REWARD_EXP
+		self.neg_reward = ALLOW_NEGATIVE_REWARD
 		self.aps = 0						# actions per second
 
 		# list of tuples of (state, action, reward);
@@ -112,14 +115,8 @@ class FlowBot(BaseAgent):
 		if LOAD:
 			self.load(preserve=PRESERVE)
 		else:
-			self.net = NeuralNetwork(NET_NAME, [state_size(self.state_comp)], len(self.action_states))
-			self.net.add_fc(256, activation=ActivationType.RELU)
-			self.net.add_drop_out(0.2)
-			self.net.add_fc(512, activation=ActivationType.RELU)
-			self.net.add_drop_out(0.2)
-			self.net.add_fc(256, activation=ActivationType.RELU)
-			self.net.add_drop_out(0.2)
-			self.net.commit()
+			drop_out_rate = None
+			self.net = nets.flat_1(NET_NAME, [state_size(self.state_comp)], len(self.action_states), drop_out_rate)
 			self.run_info.net = self.net
 
 		if INFO:
@@ -240,10 +237,8 @@ class FlowBot(BaseAgent):
 
 		mem_up_time, train_start, train_end = 0, 0, 0
 		if TRAIN:
-			# update the q_values in the replay memory
 			mem_up_time = self.replay_memory.update_q_values(sarsa=self.sarsa)
-			# todo vary learning rate
-			# train the net
+
 			train_start = time()
 			self.net.train(self.replay_memory.get_training_set(), batch_size=512, n_epochs=4, save=SAVE_NET)
 			train_end = time()
@@ -276,7 +271,10 @@ class FlowBot(BaseAgent):
 
 		if RE_AIRTIME:
 			if self.episode_end_condition.was_met:
-				at_component = self.reward_accumulator / self.run_info.episode_lengths[-1]
+				if self.run_info.episode_lengths[-1] <= 0:
+					at_component = 0
+				else:
+					at_component = self.reward_accumulator / self.run_info.episode_lengths[-1]
 				reward += at_component
 				self.reward_accumulator = 0
 			else:
@@ -288,7 +286,7 @@ class FlowBot(BaseAgent):
 			reward += h_component
 
 		if RE_FACING_UP:
-			vertical = Vector3(0, 0, 1)
+			vertical = Vector3(0, 0, -1)		# todo should be 1 not -1
 			fu_component = angle(facing, vertical) / 180
 			fu_component = (abs(fu_component) - 0.5) * 2
 
@@ -328,8 +326,6 @@ class FlowBot(BaseAgent):
 
 		if not ALLOW_NEGATIVE_REWARD:
 			reward = max(0, reward)
-		n_enabled_rewards = len([b for b in REWARDS if b])
-		reward /= n_enabled_rewards
 
 		is_neg = reward < 0		# raising reward to an even power would result in loss of sign
 		reward = abs(reward) ** self.reward_exp
@@ -355,7 +351,7 @@ class FlowBot(BaseAgent):
 
 		# info
 		r.draw_string_2d(8, 16, 1, 1, "Episode: " + str(self.run_info.episode_count), text_color)
-		r.draw_string_2d(8, 32, 1, 1, "Epsilon: " + str(self.epsilon), text_color)
+		r.draw_string_2d(8, 32, 1, 1, "Epsilon: " + str(round(self.epsilon, 5)), text_color)
 		r.draw_string_2d(8, 48, 1, 1, "Reward: " + str("{0:.3f}").format(reward), text_color)
 
 		# basis of the relative coordinates
@@ -410,6 +406,7 @@ class FlowBot(BaseAgent):
 			run_indexer[self.name]["bot_type"] = BOT_TYPE
 			run_indexer[self.name]["reward"] = str(REWARDS).replace("[", "").replace("]", "")
 			run_indexer[self.name]["reward_exp"] = str(self.reward_exp)
+			run_indexer[self.name]["neg_reward"] = str(self.neg_reward)
 			run_indexer[self.name]["n_episodes"] = str(self.run_info.episode_count)
 			run_indexer[self.name]["epsilon"] = str(self.epsilon)
 			run_indexer[self.name]["epsilon_decay"] = str(self.epsilon_decay)
@@ -422,6 +419,7 @@ class FlowBot(BaseAgent):
 				"bot_type": BOT_TYPE,
 				"reward": str(REWARDS).replace("[", "").replace("]", ""),
 				"reward_exp": str(self.reward_exp),
+				"neg_reward": str(self.neg_reward),
 				"n_episodes": str(self.run_info.episode_count),
 				"epsilon": str(self.epsilon),
 				"epsilon_decay": str(self.epsilon_decay),
@@ -473,6 +471,7 @@ class FlowBot(BaseAgent):
 		self.state_comp.read(LOG_DIR + bot_name + "/state_composition.cfg")
 		self.sarsa = net_info["sarsa"] == "True"
 		self.reward_exp = int(net_info["reward_exp"])
+		self.neg_reward = net_info["neg_reward"] == "True"
 		self.rel_coords = net_info["relative_coordinates"] == "True"
 
 		self.net = NeuralNetwork.restore(bot_name, new_name=new_name, verbose=True)

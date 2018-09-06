@@ -164,6 +164,14 @@ class NeuralNetwork:
 
 	@staticmethod
 	def restore(name, path=DEFAULT_SAVE_PATH, new_name=None, verbose=False):
+		"""
+		restores a net from the file system
+		:param name: the name of the saved net
+		:param path: the directory the files associated with the saved net are stored
+		:param new_name: optional, gives the net a new name
+		:param verbose: en-/disables additional console output
+		:return: the restored net object
+		"""
 		if verbose:
 			print("restoring {0:s} from {1:s}".format(name, path))
 			print("config file:", path + name + "/net.cfg")
@@ -314,6 +322,10 @@ class ReplayMemory:
 		return states_batch, q_values_batch
 
 	def get_training_set(self, shuffle=False):
+		"""
+		:param shuffle: whether the set will be shuffled
+		:return: a set of training data containing the entire contents of this replay memory
+		"""
 		if shuffle:
 			ordering = [i for i in range(self.size)]
 			np.random.shuffle(ordering)
@@ -339,6 +351,10 @@ class ReplayMemory:
 		self.estimation_errors = []
 
 	def write(self):
+		"""
+		saves the contents of this replay memory to the file system
+		:return:
+		"""
 		np.savetxt(TEMP_DIR + "estimation_errors.csv", self.estimation_errors, delimiter=",")
 		# np.savetxt(TEMP_DIR + "rewards.csv", self.rewards, delimiter=",")		# replaced with lines 187-189
 		np.savetxt(TEMP_DIR + "q_values.csv", self.q_values, delimiter=",")
@@ -365,3 +381,55 @@ class ReplayMemory:
 			states_differentials.append(differential)
 			prev_state = state
 		np.savetxt(TEMP_DIR + "state_diffs.csv", states_differentials, delimiter=",")
+
+
+def flat_1(name, in_shape, n_classes, drop_out=None):
+	net = NeuralNetwork(name, in_shape, n_classes)
+	net.add_fc(512, activation=ActivationType.RELU)
+	if drop_out is not None:
+		net.add_drop_out(drop_out)
+	net.commit()
+	return net
+
+
+def flat_2(name, in_shape, n_classes, drop_out=None):
+	net = NeuralNetwork(name, in_shape, n_classes)
+	net.add_fc(512, activation=ActivationType.RELU)
+	if drop_out is not None:
+		net.add_drop_out(drop_out)
+	net.add_fc(512, activation=ActivationType.RELU)
+	if drop_out is not None:
+		net.add_drop_out(drop_out)
+	net.commit()
+	return net
+
+
+def flat_3(name, in_shape, n_classes, drop_out=None):
+	net = NeuralNetwork(name, in_shape, n_classes)
+	net.add_fc(512, activation=ActivationType.RELU)
+	if drop_out is not None:
+		net.add_drop_out(drop_out)
+	net.add_fc(512, activation=ActivationType.RELU)
+	if drop_out is not None:
+		net.add_drop_out(drop_out)
+	net.add_fc(512, activation=ActivationType.RELU)
+	if drop_out is not None:
+		net.add_drop_out(drop_out)
+	net.commit()
+	return net
+
+
+def curve_3(name, in_shape, n_classes, drop_out=None):
+	net = NeuralNetwork(name, in_shape, n_classes)
+	net.add_fc(256, activation=ActivationType.RELU)
+	if drop_out is not None:
+		net.add_drop_out(drop_out)
+	net.add_fc(512, activation=ActivationType.RELU)
+	if drop_out is not None:
+		net.add_drop_out(drop_out)
+	net.add_fc(256, activation=ActivationType.RELU)
+	if drop_out is not None:
+		net.add_drop_out(drop_out)
+	net.commit()
+	return net
+

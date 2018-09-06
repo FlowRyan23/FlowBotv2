@@ -708,18 +708,23 @@ def rot3_struct_to_class(rot3):
 	return vmath.Vector3(float(rot3.pitch), float(rot3.yaw), float(rot3.roll))
 
 
-def get_random_action(bot_type):
+def get_random_action(bot_type, true_random=False):
 	actions = get_action_states(bot_type)
-	probs = []
-	for action_state in actions:
-		probs.append(ACTION_PERCENTAGES[as_to_str(action_state)])
 
-	for i in range(len(probs)-1):
-		r = random.random()
-		prob = sum(probs[i+1:]) / sum(probs[i:])
-		if r > prob:
-			return actions[i]
-	return actions[-1]
+	if true_random:
+		a = random.randrange(0, len(actions))
+		return actions[a]
+	else:
+		probs = []
+		for action_state in actions:
+			probs.append(ACTION_PERCENTAGES[as_to_str(action_state)])
+
+		for i in range(len(probs)-1):
+			r = random.random()
+			prob = sum(probs[i+1:]) / sum(probs[i:])
+			if r > prob:
+				return actions[i]
+		return actions[-1]
 
 
 def get_action_index(action, bot_type="all"):
