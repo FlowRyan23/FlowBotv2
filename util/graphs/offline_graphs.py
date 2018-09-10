@@ -3,7 +3,7 @@ import re
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import style
-from util import stats
+from util import stats, game_info as gi
 from configparser import ConfigParser
 from scipy.interpolate import spline
 
@@ -14,86 +14,11 @@ NET_DIR = PROJECT_ROOT + "Networks/saved/"
 SAVE_DIR = "E:/Studium/6. Semester/Bachelorarbeit/Diagrams/"
 VERBOSE = False
 
-ref_e1 = [
-	[0.58138, 0.00000, 0.66332, 0.07746, 0.47645, 0.38730],
-	[0.17321, 0.04472, 0.81363, 0.33466, 0.45717, 0.47958],
-	[0.27386, 0.04472, 0.68118, 0.23238, 0.49900, 0.41231],
-	[0.23664, 0.04472, 0.76158, 0.47117, 0.45497, 0.39497],
-	[0.56480, 0.03162, 0.77846, 0.15492, 0.47329, 0.45277],
-	[0.27019, 0.04472, 0.69282, 0.19494, 0.44272, 0.35071],
-	[0.20000, 0.04472, 0.82158, 0.31464, 0.45277, 0.44609],
-	[0.08367, 0.00000, 0.94181, 0.00000, 0.13784, 0.05477]
-]
-ref_e1_ulb = [
-	[0.62530, 0.03162, 0.76223, 0.13416, 0.42426, 0.43932],
-	[0.41110, 0.04472, 0.81486, 0.27019, 0.42661, 0.41231],
-	[0.55857, 0.04472, 0.76616, 0.26268, 0.45166, 0.39243],
-	[0.37014, 0.04472, 0.80250, 0.37683, 0.43012, 0.41473],
-	[0.54955, 0.03162, 0.70569, 0.15166, 0.46904, 0.44159],
-	[0.53666, 0.04472, 0.70427, 0.20736, 0.48166, 0.43128],
-	[0.42895, 0.04472, 0.78677, 0.27928, 0.44721, 0.40743],
-	[0.05477, 0.00000, 0.51769, 0.04472, 0.55588, 0.20000]
-]
-ref_e2 = [
-	[0.33800, 0.00000, 0.44000, 0.00600, 0.22700, 0.15000],
-	[0.03000, 0.00200, 0.66200, 0.11200, 0.20900, 0.23000],
-	[0.07500, 0.00200, 0.46400, 0.05400, 0.24900, 0.17000],
-	[0.05600, 0.00200, 0.58000, 0.22200, 0.20700, 0.15600],
-	[0.31900, 0.00100, 0.60600, 0.02400, 0.22400, 0.20500],
-	[0.07300, 0.00200, 0.48000, 0.03800, 0.19600, 0.12300],
-	[0.04000, 0.00200, 0.67500, 0.09900, 0.20500, 0.19900],
-	[0.00700, 0.00000, 0.88700, 0.00000, 0.01900, 0.00300]
-]
-ref_e2_ulb = [
-	[0.39100, 0.00100, 0.58100, 0.01800, 0.18000, 0.19300],
-	[0.16900, 0.00200, 0.66400, 0.07300, 0.18200, 0.17000],
-	[0.31200, 0.00200, 0.58700, 0.06900, 0.20400, 0.15400],
-	[0.13700, 0.00200, 0.64400, 0.14200, 0.18500, 0.17200],
-	[0.30200, 0.00100, 0.49800, 0.02300, 0.22000, 0.19500],
-	[0.28800, 0.00200, 0.49600, 0.04300, 0.23200, 0.18600],
-	[0.18400, 0.00200, 0.61900, 0.07800, 0.20000, 0.16600],
-	[0.00300, 0.00000, 0.26800, 0.00200, 0.30900, 0.04000]
-]
-ref_e3 = [
-	[0.19651, 0.00000, 0.29186, 0.00046, 0.10815, 0.05809],
-	[0.00520, 0.00009, 0.53863, 0.03748, 0.09555, 0.11030],
-	[0.02054, 0.00009, 0.31607, 0.01255, 0.12425, 0.07009],
-	[0.01325, 0.00009, 0.44171, 0.10460, 0.09418, 0.06162],
-	[0.18017, 0.00003, 0.47175, 0.00372, 0.10602, 0.09282],
-	[0.01972, 0.00009, 0.33255, 0.00741, 0.08677, 0.04314],
-	[0.00800, 0.00009, 0.55457, 0.03115, 0.09282, 0.08877],
-	[0.00059, 0.00000, 0.83538, 0.00000, 0.00262, 0.00016]
-]
-ref_e3_ulb = [
-	[0.24449, 0.00003, 0.44286, 0.00241, 0.07637, 0.08479],
-	[0.06948, 0.00009, 0.54107, 0.01972, 0.07764, 0.07009],
-	[0.17427, 0.00009, 0.44974, 0.01812, 0.09214, 0.06043],
-	[0.05071, 0.00009, 0.51681, 0.05351, 0.07957, 0.07133],
-	[0.16596, 0.00003, 0.35143, 0.00349, 0.10319, 0.08611],
-	[0.15456, 0.00009, 0.34932, 0.00892, 0.11175, 0.08022],
-	[0.07893, 0.00009, 0.48701, 0.02178, 0.08944, 0.06763],
-	[0.00016, 0.00000, 0.13874, 0.00009, 0.17177, 0.00800]
-]
-ref_e4 = [
-	[0.11424, 0.00000, 0.19360, 0.00004, 0.05153, 0.02250],
-	[0.00090, 0.00000, 0.43824, 0.01254, 0.04368, 0.05290],
-	[0.00563, 0.00000, 0.21530, 0.00292, 0.06200, 0.02890],
-	[0.00314, 0.00000, 0.33640, 0.04928, 0.04285, 0.02434],
-	[0.10176, 0.00000, 0.36724, 0.00058, 0.05018, 0.04203],
-	[0.00533, 0.00000, 0.23040, 0.00144, 0.03842, 0.01513],
-	[0.00160, 0.00000, 0.45563, 0.00980, 0.04203, 0.03960],
-	[0.00005, 0.00000, 0.78677, 0.00000, 0.00036, 0.00000]
-]
-ref_e4_ulb = [
-	[0.15288, 0.00000, 0.33756, 0.00032, 0.03240, 0.03725],
-	[0.02856, 0.00000, 0.44090, 0.00533, 0.03312, 0.02890],
-	[0.09734, 0.00000, 0.34457, 0.00476, 0.04162, 0.02372],
-	[0.01877, 0.00000, 0.41474, 0.02016, 0.03423, 0.02958],
-	[0.09120, 0.00000, 0.24800, 0.00053, 0.04840, 0.03803],
-	[0.08294, 0.00000, 0.24602, 0.00185, 0.05382, 0.03460],
-	[0.03386, 0.00000, 0.38316, 0.00608, 0.04000, 0.02756],
-	[0.00001, 0.00000, 0.07182, 0.00000, 0.09548, 0.00160]
-]
+action_counts_all_tob = [1649783, 309527, 147870, 141391, 320286, 178412, 274622, 165084,
+							239448, 251223, 188318, 290155, 213037, 232899, 169770, 199118,
+							314126, 207407, 147208, 193214, 130571, 165308, 296463, 177198,
+							177655, 237462, 240246, 213827, 169740, 202578, 149248, 117873,
+							198860, 311093, 236327, 197635]
 
 
 def height():
@@ -348,7 +273,21 @@ def net_plot_helper(title, vals):
 		plt.show()
 
 
-def reward_comparison(bots, max_reward=1e+6, norm_len=None, ref=None, n_points=100):
+def reward_comparison(bots, max_reward=1e+6, norm_len=None, norm_y=False, ref=None, n_points=100, legend=False):
+	"""
+	Creates a diagram with a line for each bot, displaying the reward they got throughout training
+	:param bots: the id's of the bots for the diagram
+	:param max_reward: cutoff point for rewards; any bot with a maximum reward greater than max_reward will not be
+						included in the diagram
+	:param norm_len: specifies the maximum value on the x-Axis, all lines will be streched to this length
+						if None the x-Axis will go from 0 to the episode count of the longest running bot
+	:param norm_y: whether the values are per iteration or per episode (for bots with task tob all episodes have the
+					same length; by dividing the per-episode-value by the episode length a per-iteration-value is calculated)
+	:param ref:	the reference value for the bots (how much reward random action yields in the given circumstance)
+	:param n_points: how many points are displayed of each line (high variance can clutter the diagram if n_points is too high)
+	:param legend: whether the legend is displayed
+	:return:
+	"""
 	avrg_x = norm_len if norm_len is not None else 0
 	averages = np.zeros([n_points])
 	avrg_ep_len = 0
@@ -361,7 +300,7 @@ def reward_comparison(bots, max_reward=1e+6, norm_len=None, ref=None, n_points=1
 		rewards = np.loadtxt(LOG_DIR + b + "/reward_info.csv", delimiter=",")
 		rewards = np.sum(rewards, axis=1)
 		task = description.split(", ")[2]
-		rewards = reduce_rewards(rewards, ep_len, norm=task == "tob")
+		rewards = reduce_rewards(rewards, ep_len, norm=norm_y)
 
 		if max(rewards) > max_reward:
 			continue
@@ -380,7 +319,7 @@ def reward_comparison(bots, max_reward=1e+6, norm_len=None, ref=None, n_points=1
 		x_old = np.linspace(0, x_max, len(rewards))
 		x_new = np.linspace(0, x_max, n_points)
 		smoothed = spline(x_old, rewards, x_new)
-		plt.plot(x_new, smoothed, label=b)
+		plt.plot(x_new, smoothed, label=description)
 
 		for i in range(n_points):
 			averages[i] += smoothed[i]
@@ -391,11 +330,75 @@ def reward_comparison(bots, max_reward=1e+6, norm_len=None, ref=None, n_points=1
 	plt.plot(avrg_x, averages, label="average", color="k", linestyle="--")
 
 	if ref is not None:
-		ref_y = [ref*avrg_ep_len for _ in range(n_points)]
+		if norm_y:
+			ref_y = [ref for _ in range(n_points)]
+		else:
+			ref_y = [ref*avrg_ep_len for _ in range(n_points)]
+
 		plt.plot(avrg_x, ref_y, label="reference", color="k")
-	# plt.legend(loc="upper left", fontsize=12)
+	if legend:
+		plt.legend(loc="upper center", fontsize=12, framealpha=1)
 	plt.show()
 	plt.clf()
+
+
+def action_summation(bots, n_actions):
+	action_counts = np.zeros([n_actions])
+	for i, bot_name in enumerate(bots):
+		data = np.loadtxt(LOG_DIR + bot_name + "/net_output.csv", delimiter=",")
+		for i in range(len(data)):
+			action_counts[np.argmax(data[i])] += 1
+		print(str(i/len(bots)) + "%")
+
+	print(action_counts)
+
+	x = np.linspace(0, len(action_counts), len(action_counts))
+	plt.bar(x, action_counts)
+	plt.show()
+	plt.clf()
+
+
+def avrg_episode_length(bots):
+	data = []
+	for bot_name in bots:
+		ep_lens = np.loadtxt(LOG_DIR + bot_name + "/episode_times.csv")
+		data.append(ep_lens)
+
+	max_len = max([len(row) for row in data])
+	'''
+	y = np.zeros([max_len])
+	n = np.zeros([max_len])
+
+	for r in range(len(data)):
+		for c in range(len(data[r])):
+			y[c] += data[r][c]
+			n[c] += 1
+
+	for i in range(len(y)):
+		y[i] /= n[i]
+
+	print(y)
+	print(n)
+	'''
+
+	for y in data:
+		x = [i for i in range(len(y))]
+		plt.plot(x, y)
+	plt.show()
+	plt.clf()
+
+
+def rare_actions(bots, n_actions):
+	for i, bot_name in enumerate(bots):
+		rares = np.zeros([n_actions])
+		data = np.loadtxt(LOG_DIR + bot_name + "/net_output.csv", delimiter=",")
+		for x in range(len(data)):
+			for y in range(len(data[x])):
+				if data[x][y] == 0:
+					rares[y] += 1
+
+		print(bot_name, rares)
+		print()
 
 
 def reduce_rewards(rewards, ep_len, norm=False):
@@ -431,8 +434,11 @@ def get_bots(net_type=None, bot_type=None, task=None, sarsa=None, neg_reward=Non
 		match_nr = neg_reward is None or d[4] == neg_reward
 
 		if match_nt and match_bt and match_t and match_s and match_nr:
+			print(bot_name, d)
 			bots.append(bot_name)
 
+	if len(bots) == 0:
+		print("no bots found")
 	return bots
 
 
@@ -518,14 +524,15 @@ def net_descriptor(bot_name):
 	return net_format
 
 
-def create_graphs():
-	bots = get_bots()
+def create_graphs(bots=None):
+	if bots is None:
+		bots = get_bots()
 
 	for i, bot in enumerate(bots):
 		print("{0:d} out of {1:d} completed".format(i, len(bots)))
 		print("current:", bot)
 		desc = descriptor(bot, delimiter=",")
-		_, _, task, _, _ = desc.split(":")
+		_, _, task, _, _ = desc.split(",")
 
 		src_dir = LOG_DIR + bot + "/"
 		save_dir = SAVE_DIR + "task " + task + "/" + desc + " - " + bot + "/"
@@ -540,23 +547,10 @@ def create_graphs():
 
 def create_graph(bot_name):
 	desc = descriptor(bot_name, delimiter=",")
-	_, bot_type, task, sarsa, neg_reward = desc.split(",")
-	sarsa = sarsa == "s"
-	neg_reward = neg_reward == "n"
-
-	if sarsa:
-		if neg_reward:
-			sub_folder = "sarsa neg/"
-		else:
-			sub_folder = "sarsa/"
-	else:
-		if neg_reward:
-			sub_folder = "neg/"
-		else:
-			sub_folder = "base/"
+	_, _, task, _, _ = desc.split(",")
 
 	src_dir = LOG_DIR + bot_name + "/"
-	save_dir = SAVE_DIR + "task " + task + "/" + bot_type + "/" + sub_folder + desc + " - " + bot_name + "/"
+	save_dir = SAVE_DIR + "task " + task + "/" + desc + " - " + bot_name + "/"
 
 	if os.path.isdir(save_dir):
 		print("graphs already exist")
@@ -596,12 +590,21 @@ if __name__ == '__main__':
 		{"title": "Q-Values", "file": ["q_values.csv", "pred_q_values.csv"], "plot_func": q_vals_plot}
 	]
 
-	bots = get_bots(net_type=None, bot_type=None, task="tob", sarsa=None, neg_reward=None)
+	bots_taxx = ["FlowBot_tob1535467552", 'FlowBot1536231138', 'FlowBot1536232921', 'FlowBot1536235613', 'FlowBot1536238030', 'FlowBot1536240328', 'FlowBot1536241818', 'FlowBot1536268211']
 
-	# create_graphs()
-	# create_graph("FlowBot_tob1535640892")
+	bot_type = "all"
+	bots = get_bots(net_type=None, bot_type=bot_type, task="tob", sarsa=None, neg_reward=None)
 
-	ref = None
-	reward_comparison(bots, norm_len=100, n_points=20, ref=ref)
+	# bots = bots_taxx
+
+	# create_graphs(bots)
+	# create_graph("FlowBot1536268211")
+
+	# ref = 0.580 ** 2
+	# reward_comparison(bots, norm_len=100, norm_y=True, n_points=20, ref=ref, legend=True)
+
+	# action_summation(bots, n_actions=len(gi.get_action_states(bot_type)))
+	# rare_actions(bots, n_actions=len(gi.get_action_states(bot_type)))
+	avrg_episode_length(bots)
 
 	# fix_neg_reward()

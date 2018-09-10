@@ -40,16 +40,16 @@ SAVE_INTERVAL = 1						# how often the bot is saved (in iterations)
 
 # net and training properties
 NET_NAME = "FlowBot" + str(int(time()))
-BOT_TYPE = "all"
+BOT_TYPE = "grounded"
 INPUT_COMPOSITION_FILE = PROJECT_ROOT + "Agents/FlowBotv2/state_composition.cfg"
 N_OUTPUT = len(gi.get_action_states(BOT_TYPE))
 START_EPSILON = 0.9						# chance that a random action will be chosen instead of the one with highest q_value
 EPSILON_DECAY = 2e-3					# amount the epsilon value decreases every episode (default 5e-4)
 EPSILON_STARTUP_DECAY = 0				# amount the epsilon value decreases every time the bot is loaded (not the first time)
 MIN_EPSILON = 0.1						# minimum epsilon value
-USE_SARSA = False
+USE_SARSA = True
 RELATIVE_COORDINATES = True
-ALLOW_NEGATIVE_REWARD = False
+ALLOW_NEGATIVE_REWARD = True
 
 # end conditions
 EC_FIXED_LENGTH = 500
@@ -61,8 +61,8 @@ END_CONDITIONS = [EC_FIXED_LENGTH, EC_GOAL, EC_GAME_END, EC_LANDED]
 # rewards
 RE_HEIGHT = False						# car.z / ceiling_height
 RE_AIRTIME = False						# +1 for every iteration where !car.on_ground (given when landed)
-RE_BALL_DIST = True					# distance between car and ball
-RE_FACING_UP = False						# angle between z-axes and car.facing (normalized to 0-1)
+RE_BALL_DIST = True						# distance between car and ball
+RE_FACING_UP = False					# angle between z-axes and car.facing (normalized to 0-1)
 RE_FACING_OPP = False					# angle between y-axes and car.facing (normalized to 0-1)
 RE_FACING_BALL = True					# angle between car->ball and car.facing (normalized to 0-1)
 REWARDS = [RE_HEIGHT, RE_AIRTIME, RE_BALL_DIST, RE_FACING_UP, RE_FACING_OPP, RE_FACING_BALL]
@@ -115,8 +115,8 @@ class FlowBot(BaseAgent):
 		if LOAD:
 			self.load(preserve=PRESERVE)
 		else:
-			drop_out_rate = None
-			self.net = nets.flat_1(NET_NAME, [state_size(self.state_comp)], len(self.action_states), drop_out_rate)
+			drop_out_rate = 0.2
+			self.net = nets.flat_3(NET_NAME, [state_size(self.state_comp)], len(self.action_states), drop_out_rate)
 			self.run_info.net = self.net
 
 		if INFO:
