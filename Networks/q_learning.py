@@ -75,7 +75,7 @@ class NeuralNetwork:
 			return
 
 		if verbose:
-			print("adding drop out layer to {0:s} with rate {1:d}".format(self.name, rate))
+			print("adding drop out layer to {0:s} with rate {1:.2f}".format(self.name, rate))
 
 		self.output = tf.layers.dropout(self.output, rate,
 									name="L"+str(self.n_layers)+"-do")

@@ -20,9 +20,9 @@ TRAIN = True
 SAVE_NET = True
 COLLECT_DATA = True
 SAVE_DATA = COLLECT_DATA and True
-LOAD = False
-PRESERVE = False
-LOAD_BOT_NAME = ""
+LOAD = True
+PRESERVE = True
+LOAD_BOT_NAME = "FlowBot1536677070"
 PROJECT_ROOT = str(__file__).replace("Agents\\FlowBotv2\\flow_bot.py", "")
 NET_PATH = PROJECT_ROOT + "Networks/saved/"
 TEMP_DIR = PROJECT_ROOT + "util/temp/"
@@ -40,7 +40,7 @@ SAVE_INTERVAL = 1						# how often the bot is saved (in iterations)
 
 # net and training properties
 NET_NAME = "FlowBot" + str(int(time()))
-BOT_TYPE = "grounded"
+BOT_TYPE = "no_flip"
 INPUT_COMPOSITION_FILE = PROJECT_ROOT + "Agents/FlowBotv2/state_composition.cfg"
 N_OUTPUT = len(gi.get_action_states(BOT_TYPE))
 START_EPSILON = 0.9						# chance that a random action will be chosen instead of the one with highest q_value

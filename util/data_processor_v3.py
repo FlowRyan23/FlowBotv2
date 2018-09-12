@@ -81,7 +81,7 @@ def rlbot_to_nn_controls(rlbot_controls):
 	if rlbot_controls[7]:
 		slide = 1
 
-	return [left, right, up, down, acc, decc, jump, boost, slide]
+	return array_to_scs([left, right, up, down, acc, decc, jump, boost, slide])
 
 
 def xbox_to_rlbot_controls(xbox_controls):
@@ -149,7 +149,7 @@ def xbox_to_rlbot_controls(xbox_controls):
 		yaw = steer
 		roll = 0.0
 
-	return [throttle, steer, pitch, yaw, roll, jump, boost, slide]
+	return array_to_scs([throttle, steer, pitch, yaw, roll, jump, boost, slide])
 
 
 def xbox_to_nn_controls(xbox_controls):
@@ -209,7 +209,7 @@ def xbox_to_nn_controls(xbox_controls):
 	else:
 		slide = 0
 
-	return [right, left, up, down, acc, decc, jump, boost, slide]
+	return array_to_scs([right, left, up, down, acc, decc, jump, boost, slide])
 
 
 def array_to_scs(a):

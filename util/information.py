@@ -111,7 +111,9 @@ class RunInfo:
 		self.episode_times = np.loadtxt(bot_dir + "episode_times.csv", delimiter=",").tolist()
 		self.mem_up_times = np.loadtxt(bot_dir + "mem_up_times.csv", delimiter=",").tolist()
 		self.train_times = np.loadtxt(bot_dir + "train_times.csv", delimiter=",").tolist()
-		self.reward_data = np.loadtxt(bot_dir + "reward_data.csv", delimiter=",").tolist()
+		reward_info = np.loadtxt(bot_dir + "reward_info.csv", delimiter=",").transpose().tolist()
+		for i, key in enumerate(self.reward_data.keys()):
+			self.reward_data[key] = reward_info[i]
 		self.net_output = np.loadtxt(bot_dir + "net_output.csv", delimiter=",").tolist()
 		# todo action_stat
 		# todo self.state_score_data

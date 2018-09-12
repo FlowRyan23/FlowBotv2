@@ -222,6 +222,9 @@ ACTION_PERCENTAGES = {
 }
 
 MAX_VELOCITY = 2300
+MAX_ANGULAR_VELOCITY = 5.5
+BIG_BOOST_RESPAWN_TIME = 10
+SMALL_BOOST_RESPAWN_TIME = 4
 GRAVITATION = 650
 
 N_BIG_BOOSTS = 6
@@ -388,13 +391,15 @@ class GameInfo:
 
 		state = []
 
-		state += self.ball_info.get_state(state_composition["ball"])
-		state += self.get_player(player_id).get_state(state_composition["player"])
+		norm = state_composition["general"]["norm"] == "True"
+
+		state += self.ball_info.get_state(state_composition["ball"], norm=norm)
+		state += self.get_player(player_id).get_state(state_composition["player"], norm=norm)
 
 		if state_composition["mates"]["enable"] == "True":
 			for p in self.blue_players:
 				if p.player_id != player_id:
-					state += p.get_state(state_composition["mates"])
+					state += p.get_state(state_composition["mates"], norm=norm)
 
 		if state_composition["opponents"]["enable"] == "True":
 			for p in self.orange_players:
@@ -402,7 +407,9 @@ class GameInfo:
 
 		if state_composition["boosts"]["enable"] == "True":
 			for b in self.boosts:
-				state += b.get_state(give_is_active=state_composition["boosts"]["is_active"] == "True", give_timer=state_composition["boosts"]["timer"] == "True")
+				is_active = state_composition["boosts"]["is_active"] == "True"
+				timer = state_composition["boosts"]["timer"] == "True"
+				state += b.get_state(give_is_active=is_active, give_timer=timer, norm=norm)
 
 		t_val = float(state_composition["general"]["true_value"])
 		f_val = float(state_composition["general"]["false_value"])
@@ -448,7 +455,7 @@ class PlayerInfo:
 		"""
 		:return: the basis vectors that span the relative coordinate space of the players car
 			x: the direction the car is facing
-			y: the direction perpendicular to the cars ceiling
+			y: the direction perpendicular to the plain of the cars ceiling
 			z: the direction perpendicular to x and y (to the right of the car)
 		"""
 		pitch = -self.rotation.x
@@ -478,8 +485,9 @@ class PlayerInfo:
 
 		return rel
 
-	def get_state(self, options):
+	def get_state(self, options, norm=False):
 		"""
+		:param norm: normalizes the input to values between -1 and 1
 		:param options: id, location, rotation, velocity, angular_velocity,
 			score, is_demolished, is_on_ground, is_super_sonic, is_bot, jumped,
 			double_jumped, team, boost
@@ -488,34 +496,66 @@ class PlayerInfo:
 
 		state = []
 
-		if options["id"] == "True":
-			state.append(self.player_id)
-		if options["location"] == "True":
-			state += self.location.as_list()
-		if options["rotation"] == "True":
-			state += self.rotation.as_list()
-		if options["velocity"] == "True":
-			state += self.velocity.as_list()
-		if options["angular_velocity"] == "True":
-			state += self.angular_velocity.as_list()
-		if options["score"] == "True":
-			state.append(self.score.score)
-		if options["is_demolished"] == "True":
-			state.append(self.is_demolished)
-		if options["is_on_ground"] == "True":
-			state.append(self.is_on_ground)
-		if options["is_super_sonic"] == "True":
-			state.append(self.is_super_sonic)
-		if options["is_bot"] == "True":
-			state.append(self.is_bot)
-		if options["jumped"] == "True":
-			state.append(self.jumped)
-		if options["double_jumped"] == "True":
-			state.append(self.double_jumped)
-		if options["team"] == "True":
-			state.append(self.team)
-		if options["boost"] == "True":
-			state.append(self.boost)
+		if norm:
+			if options["id"] == "True":
+				# todo number of players is not known
+				state.append(self.player_id)
+			if options["location"] == "True":
+				state += location_norm(self.location.as_list())
+			if options["rotation"] == "True":
+				state += rotation_norm(self.rotation.as_list())
+			if options["velocity"] == "True":
+				state += velocity_norm(self.velocity.as_list())
+			if options["angular_velocity"] == "True":
+				state += ang_vel_norm(self.angular_velocity.as_list())
+			if options["score"] == "True":
+				# todo score has no upper bound
+				state.append(self.score.score)
+			if options["is_demolished"] == "True":
+				state.append(self.is_demolished)
+			if options["is_on_ground"] == "True":
+				state.append(self.is_on_ground)
+			if options["is_super_sonic"] == "True":
+				state.append(self.is_super_sonic)
+			if options["is_bot"] == "True":
+				state.append(self.is_bot)
+			if options["jumped"] == "True":
+				state.append(self.jumped)
+			if options["double_jumped"] == "True":
+				state.append(self.double_jumped)
+			if options["team"] == "True":
+				state.append(self.team)
+			if options["boost"] == "True":
+				state.append(min(100.0, max(0.0, self.boost/100)))
+		else:
+			if options["id"] == "True":
+				state.append(self.player_id)
+			if options["location"] == "True":
+				state += self.location.as_list()
+			if options["rotation"] == "True":
+				state += self.rotation.as_list()
+			if options["velocity"] == "True":
+				state += self.velocity.as_list()
+			if options["angular_velocity"] == "True":
+				state += self.angular_velocity.as_list()
+			if options["score"] == "True":
+				state.append(self.score.score)
+			if options["is_demolished"] == "True":
+				state.append(self.is_demolished)
+			if options["is_on_ground"] == "True":
+				state.append(self.is_on_ground)
+			if options["is_super_sonic"] == "True":
+				state.append(self.is_super_sonic)
+			if options["is_bot"] == "True":
+				state.append(self.is_bot)
+			if options["jumped"] == "True":
+				state.append(self.jumped)
+			if options["double_jumped"] == "True":
+				state.append(self.double_jumped)
+			if options["team"] == "True":
+				state.append(self.team)
+			if options["boost"] == "True":
+				state.append(self.boost)
 
 		return state
 
@@ -536,8 +576,9 @@ class BallInfo:
 		self.lt_time = float(b_info_struct.latest_touch.time_seconds)
 		self.lt_normal = vec3_struct_to_class(b_info_struct.latest_touch.hit_normal)
 
-	def get_state(self, options):
+	def get_state(self, options, norm=False):
 		"""
+		:param norm: normalizes the input to values between -1 and 1
 		:param options: location, rotation, velocity, angular_velocity, latest_touch,
 			lt_time, lt_normal
 		:return: list representation of the ball
@@ -545,20 +586,38 @@ class BallInfo:
 
 		state = []
 
-		if options["location"] == "True":
-			state += self.location.as_list()
-		if options["rotation"] == "True":
-			state += self.rotation.as_list()
-		if options["velocity"] == "True":
-			state += self.velocity.as_list()
-		if options["angular_velocity"] == "True":
-			state += self.angular_velocity.as_list()
-		if options["latest_touch"] == "True":
-			state += self.latest_touch.as_list()
-		if options["lt_time"] == "True":
-			state.append(self.lt_time)
-		if options["lt_normal"] == "True":
-			state += self.lt_normal.as_list()
+		# todo finish norms
+		if norm:
+			if options["location"] == "True":
+				state += location_norm(self.location.as_list())
+			if options["rotation"] == "True":
+				state += rotation_norm(self.rotation.as_list())
+			if options["velocity"] == "True":
+				state += velocity_norm(self.velocity.as_list())
+			if options["angular_velocity"] == "True":
+				state += ang_vel_norm(self.angular_velocity.as_list())
+			if options["latest_touch"] == "True":
+				state += location_norm(self.latest_touch.as_list())
+			if options["lt_time"] == "True":
+				# todo time has no upper bound -> can not be normalized
+				state.append(self.lt_time)
+			if options["lt_normal"] == "True":
+				state += self.lt_normal.as_list()
+		else:
+			if options["location"] == "True":
+				state += self.location.as_list()
+			if options["rotation"] == "True":
+				state += self.rotation.as_list()
+			if options["velocity"] == "True":
+				state += self.velocity.as_list()
+			if options["angular_velocity"] == "True":
+				state += self.angular_velocity.as_list()
+			if options["latest_touch"] == "True":
+				state += self.latest_touch.as_list()
+			if options["lt_time"] == "True":
+				state.append(self.lt_time)
+			if options["lt_normal"] == "True":
+				state += self.lt_normal.as_list()
 
 		return state
 
@@ -576,6 +635,7 @@ class BallInfo:
 		return BallInfo(self.struct)
 
 
+# todo no differentiation between small and big boost pads
 class BoostInfo:
 	def __init__(self, boost_info_struct):
 		self.struct = boost_info_struct
@@ -584,8 +644,9 @@ class BoostInfo:
 		self.is_active = bool(boost_info_struct.is_active)
 		self.timer = int(boost_info_struct.timer)
 
-	def get_state(self, give_is_active=True, give_timer=True):
+	def get_state(self, give_is_active=True, give_timer=True, norm=False):
 		"""
+		:param norm: normalizes the input to values between -1 and 1
 		:param give_is_active: whether is_active will be included in the state
 		:param give_timer: whether the timer will be included in the state
 		:return: list representation of this boost pad
@@ -595,7 +656,11 @@ class BoostInfo:
 		if give_is_active:
 			state.append(self.is_active)
 		if give_timer:
-			state.append(self.timer)
+			time = BIG_BOOST_RESPAWN_TIME - self.timer if self.timer != 0 else 0
+			if norm:
+				state.append(time / BIG_BOOST_RESPAWN_TIME)
+			else:
+				state.append(time)
 
 		return state
 
@@ -698,6 +763,34 @@ def player_state_size(p_state):
 		size += 1
 
 	return size
+
+
+def location_norm(loc):
+	loc[0] = min(1, max(-1, loc[0] / (ARENA_WIDTH/2)))
+	loc[1] = min(1, max(-1, loc[1] / (ARENA_LENGTH/2)))
+	loc[2] = min(1, max(-1, loc[2] / (ARENA_HEIGHT/2)))
+	return loc
+
+
+def rotation_norm(rot):
+	rot[0] = min(1, max(-1, rot[0] / math.pi))
+	rot[1] = min(1, max(-1, rot[1] / math.pi))
+	rot[2] = min(1, max(-1, rot[2] / math.pi))
+	return rot
+
+
+def velocity_norm(vel):
+	vel[0] = min(1, max(-1, vel[0] / MAX_VELOCITY))
+	vel[1] = min(1, max(-1, vel[1] / MAX_VELOCITY))
+	vel[2] = min(1, max(-1, vel[2] / MAX_VELOCITY))
+	return vel
+
+
+def ang_vel_norm(ang_vel):
+	ang_vel[0] = min(1, max(-1, ang_vel[0] / MAX_ANGULAR_VELOCITY))
+	ang_vel[1] = min(1, max(-1, ang_vel[1] / MAX_ANGULAR_VELOCITY))
+	ang_vel[2] = min(1, max(-1, ang_vel[2] / MAX_ANGULAR_VELOCITY))
+	return ang_vel
 
 
 def vec3_struct_to_class(vec3):

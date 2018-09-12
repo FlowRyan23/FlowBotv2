@@ -53,7 +53,7 @@ class Vector3:
 		return Vector3(round(self.x, n), round(self.y, n), round(self.z, n))
 
 	def __str__(self):
-		return "x: " + str(self.x) + ", y: " + str(self.y) + ", z: " + str(self.z)
+		return "x: " + str(round(self.x, 3)) + ", y: " + str(round(self.y, 3)) + ", z: " + str(round(self.z, 3))
 
 	def scalar_mul(self, val):
 		return Vector3(self.x*val, self.y*val, self.z*val)

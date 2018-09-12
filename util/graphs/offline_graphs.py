@@ -299,7 +299,6 @@ def reward_comparison(bots, max_reward=1e+6, norm_len=None, norm_y=False, ref=No
 
 		rewards = np.loadtxt(LOG_DIR + b + "/reward_info.csv", delimiter=",")
 		rewards = np.sum(rewards, axis=1)
-		task = description.split(", ")[2]
 		rewards = reduce_rewards(rewards, ep_len, norm=norm_y)
 
 		if max(rewards) > max_reward:
@@ -593,18 +592,18 @@ if __name__ == '__main__':
 	bots_taxx = ["FlowBot_tob1535467552", 'FlowBot1536231138', 'FlowBot1536232921', 'FlowBot1536235613', 'FlowBot1536238030', 'FlowBot1536240328', 'FlowBot1536241818', 'FlowBot1536268211']
 
 	bot_type = "all"
-	bots = get_bots(net_type=None, bot_type=bot_type, task="tob", sarsa=None, neg_reward=None)
+	bots = get_bots(net_type=None, bot_type=bot_type, task="tob", sarsa="s", neg_reward="n")
 
-	# bots = bots_taxx
+	bots.append("FlowBot1536677070_a")
 
-	# create_graphs(bots)
+	# create_graphs(["FlowBot1536677070_a"])
 	# create_graph("FlowBot1536268211")
 
-	# ref = 0.580 ** 2
-	# reward_comparison(bots, norm_len=100, norm_y=True, n_points=20, ref=ref, legend=True)
+	ref = 0.0 ** 2
+	reward_comparison(bots, norm_len=100, norm_y=True, n_points=25, ref=ref, legend=True)
 
 	# action_summation(bots, n_actions=len(gi.get_action_states(bot_type)))
 	# rare_actions(bots, n_actions=len(gi.get_action_states(bot_type)))
-	avrg_episode_length(bots)
+	# avrg_episode_length(bots)
 
 	# fix_neg_reward()
